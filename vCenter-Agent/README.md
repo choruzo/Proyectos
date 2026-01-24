@@ -1440,3 +1440,8 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 Made with ❤️ and 🤖 AI
 
 </div>
+
+![Login interface](./assets/Login.gif)
+![Admin interface](./assets/Admin.gif)
+![Chat interface](./assets/Chat.gif)
+
