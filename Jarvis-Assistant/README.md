@@ -1,3 +1,5 @@
+[⬅️ Volver al índice principal](../README.md)
+
 # 🤖 Jarvis Voice Assistant - Asistente de Voz en Español
 
 > **Sistema de asistente de voz completamente en español, optimizado para Raspberry Pi 4 e Intel N95, con reconocimiento offline y control inteligente del hogar.**
