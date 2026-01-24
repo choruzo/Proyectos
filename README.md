@@ -8,8 +8,8 @@ Bienvenido a mi escaparate de proyectos. Aquí encontrarás la documentación de
 
 | Categoría | Proyecto | Descripción | Stack Técnico | Documentación |
 | :--- | :--- | :--- | :--- | :--- |
-| **Cloud & AI** | **vCenter Agent System** | Plataforma multi-agente para gestión de VMware mediante lenguaje natural. Implementa RAG y MCP. | `LangChain`, `Flask`, `vSphere SDK`, `Ollama` | [📄 Ver Detalle](./Python/vCenter-Agent) |  
-| **IoT & Voice** | **Jarvis Voice Assistant** | Asistente de voz offline optimizado para Raspberry Pi con control domótico y reconocimiento en español. | `Python`, `Raspberry Pi`, `NLP`, `Speech-to-Text` | [📄 Ver Detalle](./Python/Jarvis.md) |
+| **Cloud & AI** | **vCenter Agent System** | Plataforma multi-agente para gestión de VMware mediante lenguaje natural. Implementa RAG y MCP. | `LangChain`, `Flask`, `vSphere SDK`, `Ollama` | [📄 Ver Detalle](./vCenter-Agent) |  
+| **IoT & Voice** | **Jarvis Voice Assistant** | Asistente de voz offline optimizado para Raspberry Pi con control domótico y reconocimiento en español. | `Python`, `Raspberry Pi`, `NLP`, `Speech-to-Text` | [📄 Ver Detalle](./Jarvis-Assistant) |
 
 ---
 
