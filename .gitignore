@@ -1,2 +1,4 @@
 # Ignore RAG virtual environment
 /RAG/.venv/
+/RAG/doscs/
+/RAG/db_esxi/
