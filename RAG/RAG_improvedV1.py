@@ -64,8 +64,253 @@ class RetrievalMetrics:
     sources_used: List[str]
     context_length: int
     retrieval_method: str
+    reranked: bool = False
+    query_expanded: bool = False
 
 
+# ============================================================================
+# MEJORA 1: QUERY EXPANSION - Enriquecer queries cortas
+# ============================================================================
+class QueryExpander:
+    """Expande queries cortas para mejorar retrieval"""
+    
+    def __init__(self, llm):
+        self.llm = llm
+        self.cache = {}  # Cache de expansiones
+    
+    def should_expand(self, query: str) -> bool:
+        """Determina si una query necesita expansión"""
+        words = query.split()
+        
+        # Expandir si:
+        # - Muy corta (< 5 palabras)
+        # - Muy genérica (palabras comunes)
+        if len(words) < 5:
+            return True
+        
+        # Verificar si tiene términos técnicos específicos
+        technical_terms = {'esxi', 'vcenter', 'vmware', 'vsphere', 'datastore', 'vmotion'}
+        has_technical = any(term in query.lower() for term in technical_terms)
+        
+        return not has_technical
+    
+    def expand(self, query: str) -> str:
+        """Expande la query con términos técnicos y sinónimos"""
+        
+        # Verificar cache
+        if query in self.cache:
+            logger.info(f"Query expansion (cache): {query} -> {self.cache[query]}")
+            return self.cache[query]
+        
+        if not self.should_expand(query):
+            return query
+        
+        logger.info(f"Expandiendo query: {query}")
+        
+        prompt = f"""Eres un experto en VMware ESXi. Reformula esta pregunta añadiendo términos técnicos relevantes y sinónimos.
+
+Pregunta original: {query}
+
+Reglas:
+1. Mantén el significado original
+2. Añade términos técnicos VMware relacionados
+3. Incluye sinónimos (ej: "VM" = "máquina virtual" = "virtual machine")
+4. Máximo 15 palabras adicionales
+5. Responde SOLO con la pregunta expandida, sin explicaciones
+
+Pregunta expandida:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            expanded = getattr(response, 'content', str(response)).strip()
+            
+            # Validar que la expansión tenga sentido
+            if len(expanded) > 0 and len(expanded) < len(query) * 3:
+                self.cache[query] = expanded
+                logger.info(f"Query expandida: {expanded}")
+                return expanded
+            else:
+                logger.warning("Expansión inválida, usando query original")
+                return query
+                
+        except Exception as e:
+            logger.error(f"Error expandiendo query: {e}")
+            return query
+
+
+# ============================================================================
+# MEJORA 2: RERANKING - Reordenar resultados por relevancia real
+# ============================================================================
+class CrossEncoderReranker:
+    """Reranker usando el LLM para evaluar relevancia"""
+    
+    def __init__(self, llm):
+        self.llm = llm
+    
+    def rerank(self, query: str, docs: List[Tuple[Document, float]], top_k: int = 5) -> List[Tuple[Document, float]]:
+        """Reordena documentos por relevancia usando LLM"""
+        
+        if len(docs) <= top_k:
+            return docs
+        
+        logger.info(f"Reranking {len(docs)} documentos...")
+        
+        # Evaluar cada documento
+        scored_docs = []
+        
+        for doc, original_score in docs[:15]:  # Solo rerank top 15 por eficiencia
+            relevance_score = self._score_relevance(query, doc)
+            
+            # Combinar score original con relevance score
+            final_score = (original_score * 0.3) + (relevance_score * 0.7)
+            scored_docs.append((doc, final_score))
+        
+        # Ordenar por nuevo score
+        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"Reranking completado: top score = {scored_docs[0][1]:.3f}")
+        return scored_docs[:top_k]
+    
+    def _score_relevance(self, query: str, doc: Document) -> float:
+        """Evalúa relevancia de un documento para una query"""
+        
+        # Truncar documento si es muy largo
+        content = doc.page_content[:800]
+        
+        prompt = f"""Evalúa la relevancia de este fragmento para responder la pregunta.
+
+PREGUNTA: {query}
+
+FRAGMENTO:
+{content}
+
+¿Qué tan relevante es este fragmento para responder la pregunta?
+Responde SOLO con un número del 0 al 10:
+- 0 = completamente irrelevante
+- 5 = parcialmente relevante
+- 10 = extremadamente relevante, responde directamente
+
+Puntuación:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            score_text = getattr(response, 'content', str(response)).strip()
+            
+            # Extraer número
+            import re
+            numbers = re.findall(r'\d+', score_text)
+            if numbers:
+                score = int(numbers[0])
+                return min(max(score / 10.0, 0.0), 1.0)  # Normalizar 0-1
+            else:
+                return 0.5  # Default si no puede parsear
+                
+        except Exception as e:
+            logger.error(f"Error scoring relevance: {e}")
+            return 0.5
+
+
+# ============================================================================
+# MEJORA 3: CHUNKING ADAPTATIVO - Tamaño óptimo basado en análisis
+# ============================================================================
+class AdaptiveSemanticChunker:
+    """Chunking mejorado con tamaños adaptativos"""
+    
+    def __init__(self, chunk_size: int = 1200, chunk_overlap: int = 250):
+        """
+        Tamaños aumentados para mejor contexto:
+        - chunk_size: 1000 -> 1200 (20% más contexto)
+        - chunk_overlap: 200 -> 250 (25% más overlap)
+        """
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        
+        # Separadores semánticos en orden de prioridad
+        self.separators = [
+            "\n\n\n",  # Múltiples líneas vacías
+            "\n\n",    # Párrafos
+            "\n",      # Líneas
+            ". ",      # Frases
+            "! ",
+            "? ",
+            "; ",
+            ", ",
+            " ",       # Palabras
+            ""         # Caracteres
+        ]
+    
+    def split_documents(self, docs: List[Document]) -> List[Document]:
+        """Split con respeto a límites semánticos"""
+        chunks = []
+        
+        for doc in docs:
+            source = doc.metadata.get('source', 'unknown')
+            file_type = Path(source).suffix.lower()
+            
+            # Estrategia específica por tipo de archivo
+            if file_type in ['.md', '.markdown']:
+                chunks.extend(self._split_markdown(doc))
+            else:
+                chunks.extend(self._split_recursive(doc))
+        
+        logger.info(f"Documentos divididos en {len(chunks)} chunks semánticos (adaptativo)")
+        return chunks
+    
+    def _split_markdown(self, doc: Document) -> List[Document]:
+        """Split específico para Markdown preservando estructura"""
+        headers_to_split_on = [
+            ("#", "Header 1"),
+            ("##", "Header 2"),
+            ("###", "Header 3"),
+        ]
+        
+        try:
+            md_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+            md_chunks = md_splitter.split_text(doc.page_content)
+            
+            # Añadir metadata de headers
+            result = []
+            for chunk in md_chunks:
+                metadata = {**doc.metadata}
+                metadata.update(chunk.metadata)
+                result.append(Document(page_content=chunk.page_content, metadata=metadata))
+            
+            # Si los chunks son muy grandes, subdividir
+            final_chunks = []
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                separators=self.separators
+            )
+            
+            for chunk in result:
+                if len(chunk.page_content) > self.chunk_size:
+                    sub_chunks = text_splitter.split_documents([chunk])
+                    final_chunks.extend(sub_chunks)
+                else:
+                    final_chunks.append(chunk)
+            
+            return final_chunks
+            
+        except Exception as e:
+            logger.warning(f"Error en split de Markdown: {e}, usando split recursivo")
+            return self._split_recursive(doc)
+    
+    def _split_recursive(self, doc: Document) -> List[Document]:
+        """Split recursivo respetando límites semánticos"""
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=self.separators,
+            length_function=len,
+        )
+        
+        return text_splitter.split_documents([doc])
+
+
+# ============================================================================
+# BM25 Retriever (sin cambios, funciona bien)
+# ============================================================================
 class BM25Retriever:
     """Implementación simple de BM25 para búsqueda por keywords"""
     
@@ -135,106 +380,40 @@ class BM25Retriever:
         return scores[:k]
 
 
-class SemanticChunker:
-    """Chunking mejorado con respeto a límites semánticos"""
+# ============================================================================
+# MEJORA 4: HYBRID RETRIEVER CON ALPHA ADAPTATIVO
+# ============================================================================
+class ImprovedHybridRetriever:
+    """Retriever híbrido mejorado con alpha adaptativo"""
     
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        
-        # Separadores semánticos en orden de prioridad
-        self.separators = [
-            "\n\n\n",  # Múltiples líneas vacías
-            "\n\n",    # Párrafos
-            "\n",      # Líneas
-            ". ",      # Frases
-            "! ",
-            "? ",
-            "; ",
-            ", ",
-            " ",       # Palabras
-            ""         # Caracteres
-        ]
-    
-    def split_documents(self, docs: List[Document]) -> List[Document]:
-        """Split con respeto a límites semánticos"""
-        chunks = []
-        
-        for doc in docs:
-            source = doc.metadata.get('source', 'unknown')
-            file_type = Path(source).suffix.lower()
-            
-            # Estrategia específica por tipo de archivo
-            if file_type in ['.md', '.markdown']:
-                chunks.extend(self._split_markdown(doc))
-            else:
-                chunks.extend(self._split_recursive(doc))
-        
-        logger.info(f"Documentos divididos en {len(chunks)} chunks semánticos")
-        return chunks
-    
-    def _split_markdown(self, doc: Document) -> List[Document]:
-        """Split específico para Markdown preservando estructura"""
-        headers_to_split_on = [
-            ("#", "Header 1"),
-            ("##", "Header 2"),
-            ("###", "Header 3"),
-        ]
-        
-        try:
-            md_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-            md_chunks = md_splitter.split_text(doc.page_content)
-            
-            # Añadir metadata de headers
-            result = []
-            for chunk in md_chunks:
-                metadata = {**doc.metadata}
-                metadata.update(chunk.metadata)
-                result.append(Document(page_content=chunk.page_content, metadata=metadata))
-            
-            # Si los chunks son muy grandes, subdividir
-            final_chunks = []
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=self.chunk_size,
-                chunk_overlap=self.chunk_overlap,
-                separators=self.separators
-            )
-            
-            for chunk in result:
-                if len(chunk.page_content) > self.chunk_size:
-                    sub_chunks = text_splitter.split_documents([chunk])
-                    final_chunks.extend(sub_chunks)
-                else:
-                    final_chunks.append(chunk)
-            
-            return final_chunks
-            
-        except Exception as e:
-            logger.warning(f"Error en split de Markdown: {e}, usando split recursivo")
-            return self._split_recursive(doc)
-    
-    def _split_recursive(self, doc: Document) -> List[Document]:
-        """Split recursivo respetando límites semánticos"""
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            separators=self.separators,
-            length_function=len,
-        )
-        
-        return text_splitter.split_documents([doc])
-
-
-class HybridRetriever:
-    """Retriever híbrido que combina búsqueda vectorial y BM25"""
-    
-    def __init__(self, vectorstore, documents: List[Document], alpha: float = 0.5):
+    def __init__(self, vectorstore, documents: List[Document], base_alpha: float = 0.6):
         self.vectorstore = vectorstore
         self.bm25 = BM25Retriever(documents)
-        self.alpha = alpha  # Peso para vectorial (1-alpha para BM25)
+        self.base_alpha = base_alpha
+    
+    def _calculate_adaptive_alpha(self, query: str) -> float:
+        """Calcula alpha dinámicamente basado en características de la query"""
+        
+        words = query.split()
+        num_words = len(words)
+        
+        # Queries cortas (< 5 palabras) -> más peso a BM25 (keywords)
+        # Queries largas (> 10 palabras) -> más peso a vectorial (semántica)
+        if num_words < 5:
+            alpha = 0.4  # 40% vectorial, 60% BM25
+        elif num_words > 10:
+            alpha = 0.75  # 75% vectorial, 25% BM25
+        else:
+            alpha = self.base_alpha
+        
+        logger.info(f"Alpha adaptativo: {alpha:.2f} (query: {num_words} palabras)")
+        return alpha
     
     def retrieve(self, query: str, k: int = 10) -> List[Tuple[Document, float]]:
-        """Retrieval híbrido con normalización de scores"""
+        """Retrieval híbrido con normalización de scores y alpha adaptativo"""
+        
+        # Calcular alpha dinámicamente
+        alpha = self._calculate_adaptive_alpha(query)
         
         # Búsqueda vectorial con scores
         try:
@@ -272,19 +451,19 @@ class HybridRetriever:
             doc_id = id(doc)
             combined_scores[doc_id] = {
                 'doc': doc,
-                'vector_score': score * self.alpha,
+                'vector_score': score * alpha,
                 'bm25_score': 0.0
             }
         
         for doc, score in bm25_normalized:
             doc_id = id(doc)
             if doc_id in combined_scores:
-                combined_scores[doc_id]['bm25_score'] = score * (1 - self.alpha)
+                combined_scores[doc_id]['bm25_score'] = score * (1 - alpha)
             else:
                 combined_scores[doc_id] = {
                     'doc': doc,
                     'vector_score': 0.0,
-                    'bm25_score': score * (1 - self.alpha)
+                    'bm25_score': score * (1 - alpha)
                 }
         
         # Calcular score final y ordenar
@@ -299,31 +478,84 @@ class HybridRetriever:
         return final_results[:k]
 
 
-class RelevanceChecker:
+# ============================================================================
+# MEJORA 5: RELEVANCE CHECKER MÁS ESTRICTO
+# ============================================================================
+class StrictRelevanceChecker:
     """Verifica si el contexto recuperado es relevante para la pregunta"""
     
     def __init__(self, llm):
         self.llm = llm
     
-    def check_relevance(self, query: str, context: str) -> Tuple[bool, str]:
-        """Verifica relevancia del contexto"""
+    def check_relevance(self, query: str, context: str, min_score: float = 0.4) -> Tuple[bool, str, float]:
+        """Verifica relevancia del contexto con score numérico"""
         
         # Verificación rápida por keywords
         query_tokens = set(query.lower().split())
         context_tokens = set(context.lower().split())
         overlap = len(query_tokens & context_tokens) / len(query_tokens) if query_tokens else 0
         
-        if overlap < 0.1:  # Muy poco overlap
-            return False, "El contexto no parece relacionado con la pregunta (bajo overlap de keywords)"
+        logger.info(f"Keyword overlap: {overlap:.2%}")
         
-        # Si hay buen overlap, asumimos relevancia
-        if overlap > 0.3:
-            return True, "Contexto relevante"
+        if overlap < 0.05:  # Muy poco overlap
+            return False, "El contexto no está relacionado con la pregunta (sin keywords comunes)", overlap
         
-        # Para casos intermedios, podríamos usar el LLM (costoso)
-        # Por ahora, ser conservador y aceptar
-        return True, "Contexto potencialmente relevante"
+        # Si hay buen overlap, verificar con LLM para mayor precisión
+        if overlap > 0.15:
+            llm_score = self._llm_check_relevance(query, context[:1500])  # Limitar contexto
+            
+            if llm_score >= min_score:
+                return True, f"Contexto relevante (overlap: {overlap:.1%}, LLM: {llm_score:.1%})", llm_score
+            else:
+                return False, f"Contexto no suficientemente relevante (LLM score: {llm_score:.1%})", llm_score
+        
+        # Overlap bajo pero no cero - requiere verificación LLM
+        llm_score = self._llm_check_relevance(query, context[:1500])
+        
+        if llm_score >= min_score:
+            return True, f"Contexto aceptable (LLM: {llm_score:.1%})", llm_score
+        else:
+            return False, f"Contexto insuficiente (overlap: {overlap:.1%}, LLM: {llm_score:.1%})", llm_score
+    
+    def _llm_check_relevance(self, query: str, context: str) -> float:
+        """Usa LLM para verificar relevancia"""
+        
+        prompt = f"""Evalúa si este contexto puede responder la pregunta.
 
+PREGUNTA: {query}
+
+CONTEXTO:
+{context}
+
+¿El contexto contiene información relevante para responder la pregunta?
+Responde SOLO con un número del 0 al 10:
+- 0-3 = irrelevante
+- 4-6 = parcialmente relevante
+- 7-10 = muy relevante
+
+Puntuación:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            score_text = getattr(response, 'content', str(response)).strip()
+            
+            # Extraer número
+            import re
+            numbers = re.findall(r'\d+', score_text)
+            if numbers:
+                score = int(numbers[0])
+                return min(max(score / 10.0, 0.0), 1.0)
+            else:
+                return 0.5
+                
+        except Exception as e:
+            logger.error(f"Error en LLM relevance check: {e}")
+            return 0.5
+
+
+# ============================================================================
+# Funciones auxiliares (sin cambios significativos)
+# ============================================================================
 
 def compute_file_metadata(path: str) -> Dict:
     """Calcula metadata completa de un archivo"""
@@ -358,208 +590,192 @@ def load_documents_with_metadata(docs_dir: str) -> List[Document]:
     all_docs = []
     
     if not os.path.exists(docs_dir):
-        logger.warning(f"Directorio {docs_dir} no existe")
+        logger.error(f"Directorio {docs_dir} no existe")
         return all_docs
     
-    pattern = os.path.join(docs_dir, "**", "*.*")
-    files = glob.glob(pattern, recursive=True)
+    # Buscar archivos soportados
+    supported_extensions = ['*.pdf', '*.md', '*.markdown', '*.txt']
+    files = []
+    for ext in supported_extensions:
+        files.extend(glob.glob(os.path.join(docs_dir, '**', ext), recursive=True))
     
-    supported = ('.pdf', '.md', '.markdown', '.txt')
+    logger.info(f"Encontrados {len(files)} archivos para procesar")
     
     for file_path in files:
-        if os.path.isdir(file_path):
-            continue
-        
-        if any(part == DB_DIR for part in file_path.split(os.sep)):
-            continue
-        
-        lower = file_path.lower()
-        
         try:
-            # Metadata base
-            rel_path = os.path.relpath(file_path, docs_dir)
-            path_parts = Path(rel_path).parts
+            ext = Path(file_path).suffix.lower()
             
-            base_metadata = {
-                'source': file_path,
-                'filename': os.path.basename(file_path),
-                'file_type': Path(file_path).suffix,
-                'directory': os.path.dirname(rel_path),
-                'depth': len(path_parts) - 1,
-            }
-            
-            # Cargar según tipo
-            if lower.endswith('.pdf'):
+            if ext == '.pdf':
                 loader = PyPDFLoader(file_path)
                 docs = loader.load()
-                
-                # Añadir número de página a metadata
-                for i, doc in enumerate(docs):
-                    doc.metadata.update(base_metadata)
-                    doc.metadata['page'] = i + 1
-                
-                all_docs.extend(docs)
                 logger.info(f"[OK] PDF cargado: {file_path} ({len(docs)} páginas)")
-                
-            elif lower.endswith(('.md', '.markdown', '.txt')):
+            
+            elif ext in ['.md', '.markdown', '.txt']:
                 loader = TextLoader(file_path, encoding='utf-8')
                 docs = loader.load()
-                
-                for doc in docs:
-                    doc.metadata.update(base_metadata)
-                
-                all_docs.extend(docs)
                 logger.info(f"[OK] Texto cargado: {file_path}")
-                
+            
+            else:
+                continue
+            
+            # Enriquecer metadata
+            for doc in docs:
+                doc.metadata['file_type'] = ext
+                doc.metadata['file_name'] = os.path.basename(file_path)
+            
+            all_docs.extend(docs)
+            
         except Exception as e:
-            logger.error(f"[ERROR] Error cargando {file_path}: {e}")
+            logger.error(f"Error cargando {file_path}: {e}")
     
     logger.info(f"Total documentos cargados: {len(all_docs)}")
     return all_docs
 
 
-def needs_rebuild(docs_dir: str, db_dir: str) -> Tuple[bool, str]:
-    """Verifica si se necesita reconstruir el índice"""
+class VectorStoreManager:
+    """Gestiona el ciclo de vida del vectorstore con detección de cambios"""
     
-    manifest_path = os.path.join(db_dir, 'index_manifest.json')
+    def __init__(self, db_dir: str, docs_dir: str, embedding_model: str):
+        self.db_dir = db_dir
+        self.docs_dir = docs_dir
+        self.embedding_model = embedding_model
+        self.manifest_path = os.path.join(db_dir, 'index_manifest.json')
     
-    if not os.path.exists(db_dir) or not os.path.exists(manifest_path):
-        return True, "Base de datos no existe"
-    
-    # Cargar manifiesto
-    try:
-        with open(manifest_path, 'r', encoding='utf-8') as f:
-            manifest = json.load(f)
-    except Exception as e:
-        logger.error(f"Error leyendo manifiesto: {e}")
-        return True, "Error leyendo manifiesto"
-    
-    # Archivos actuales
-    pattern = os.path.join(docs_dir, "**", "*.*")
-    current_files = [
-        os.path.normpath(p) for p in glob.glob(pattern, recursive=True)
-        if os.path.isfile(p) and p.lower().endswith(('.pdf', '.md', '.markdown', '.txt'))
-    ]
-    
-    # Metadata actual
-    current_meta = {p: compute_file_metadata(p) for p in current_files}
-    manifest_meta = {
-        os.path.normpath(m['path']): m
-        for m in manifest.get('files', [])
-    }
-    
-    # Detectar cambios
-    current_set = set(current_meta.keys())
-    manifest_set = set(manifest_meta.keys())
-    
-    added = current_set - manifest_set
-    removed = manifest_set - current_set
-    
-    if added:
-        return True, f"Archivos añadidos: {len(added)}"
-    if removed:
-        return True, f"Archivos eliminados: {len(removed)}"
-    
-    # Detectar modificaciones
-    for p in current_set:
-        cm = current_meta.get(p)
-        mm = manifest_meta.get(p)
-        if not mm or cm.get('sha1') != mm.get('sha1'):
-            return True, f"Archivo modificado: {p}"
-    
-    return False, "Índice actualizado"
-
-
-def save_manifest(docs_dir: str, db_dir: str):
-    """Guarda manifiesto de archivos indexados"""
-    try:
-        pattern = os.path.join(docs_dir, "**", "*.*")
-        files = [
-            os.path.normpath(p) for p in glob.glob(pattern, recursive=True)
-            if os.path.isfile(p) and p.lower().endswith(('.pdf', '.md', '.markdown', '.txt'))
-        ]
+    def needs_rebuild(self) -> Tuple[bool, str]:
+        """Verifica si la base de datos necesita reconstrucción"""
         
-        files_meta = [compute_file_metadata(p) for p in files]
+        if not os.path.exists(self.db_dir):
+            return True, "Base de datos no existe"
         
-        os.makedirs(db_dir, exist_ok=True)
-        manifest_path = os.path.join(db_dir, 'index_manifest.json')
+        if not os.path.exists(self.manifest_path):
+            return True, "Manifiesto no existe"
         
-        with open(manifest_path, 'w', encoding='utf-8') as f:
-            json.dump({
-                'files': files_meta,
+        try:
+            with open(self.manifest_path, 'r') as f:
+                manifest = json.load(f)
+            
+            stored_files = {f['path']: f for f in manifest.get('files', [])}
+            
+            # Obtener archivos actuales
+            current_files = {}
+            for ext in ['*.pdf', '*.md', '*.markdown', '*.txt']:
+                for path in glob.glob(os.path.join(self.docs_dir, '**', ext), recursive=True):
+                    current_files[os.path.normpath(path)] = compute_file_metadata(path)
+            
+            # Comparar
+            if set(stored_files.keys()) != set(current_files.keys()):
+                return True, f"Archivos cambiaron: {len(stored_files)} -> {len(current_files)}"
+            
+            # Verificar hashes
+            for path, current_meta in current_files.items():
+                stored_meta = stored_files.get(path, {})
+                if current_meta.get('sha1') != stored_meta.get('sha1'):
+                    return True, f"Archivo modificado: {path}"
+            
+            return False, "Base de datos actualizada"
+            
+        except Exception as e:
+            logger.error(f"Error verificando manifest: {e}")
+            return True, f"Error en verificación: {e}"
+    
+    def save_manifest(self, files_metadata: List[Dict]):
+        """Guarda manifiesto de archivos indexados"""
+        try:
+            manifest = {
                 'created_at': datetime.now().isoformat(),
-                'num_files': len(files_meta)
-            }, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"Manifiesto guardado: {len(files_meta)} archivos")
-        
-    except Exception as e:
-        logger.error(f"Error guardando manifiesto: {e}")
+                'num_files': len(files_metadata),
+                'files': files_metadata
+            }
+            
+            os.makedirs(self.db_dir, exist_ok=True)
+            with open(self.manifest_path, 'w') as f:
+                json.dump(manifest, f, indent=2)
+            
+            logger.info(f"Manifiesto guardado: {len(files_metadata)} archivos")
+            
+        except Exception as e:
+            logger.error(f"Error guardando manifiesto: {e}")
 
 
-def get_vectorstore():
-    """Obtiene o crea el vectorstore con mejoras"""
+def get_vectorstore() -> Optional[Chroma]:
+    """Obtiene o crea vectorstore con gestión inteligente de actualizaciones"""
     
-    # Verificar si necesita reconstrucción
-    rebuild, reason = needs_rebuild(DOCS_DIR, DB_DIR)
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)
+    manager = VectorStoreManager(DB_DIR, DOCS_DIR, EMBEDDING_MODEL)
     
-    if not rebuild and os.path.exists(DB_DIR):
+    needs_rebuild, reason = manager.needs_rebuild()
+    
+    if needs_rebuild:
+        logger.info(f"Reconstruyendo base de datos: {reason}")
+        
+        # Eliminar DB anterior
+        if os.path.exists(DB_DIR):
+            try:
+                deleted_files = len([f for f in Path(DB_DIR).rglob('*') if f.is_file()])
+                shutil.rmtree(DB_DIR)
+                logger.info(f"Base de datos anterior eliminada ({deleted_files} archivos)")
+            except Exception as e:
+                logger.error(f"Error eliminando DB: {e}")
+        
+        # Cargar documentos
+        all_docs = load_documents_with_metadata(DOCS_DIR)
+        
+        if not all_docs:
+            logger.error("No hay documentos para indexar")
+            return None
+        
+        # Chunking mejorado
+        logger.info("Dividiendo documentos en chunks semánticos...")
+        chunker = AdaptiveSemanticChunker(chunk_size=1200, chunk_overlap=250)
+        chunks = chunker.split_documents(all_docs)
+        
+        logger.info(f"Documentos divididos en {len(chunks)} chunks")
+        
+        # Crear vectorstore
+        return create_vectorstore(chunks, embeddings, manager)
+    
+    else:
         logger.info(f"Cargando base de datos existente: {reason}")
         try:
             vectorstore = Chroma(
                 persist_directory=DB_DIR,
-                embedding_function=OllamaEmbeddings(model=EMBEDDING_MODEL)
+                embedding_function=embeddings
             )
+            logger.info("[OK] Base de datos cargada")
             return vectorstore
         except Exception as e:
-            logger.error(f"Error cargando base de datos: {e}")
-            rebuild = True
-            reason = f"Error al cargar: {e}"
-    
-    # Reconstruir base de datos
-    logger.info(f"Reconstruyendo base de datos: {reason}")
-    
-    # Limpiar directorio anterior
-    if os.path.exists(DB_DIR):
-        try:
-            shutil.rmtree(DB_DIR)
-            logger.info("Base de datos anterior eliminada")
-        except Exception as e:
-            logger.error(f"Error eliminando base de datos anterior: {e}")
-    
-    # Cargar documentos
-    docs = load_documents_with_metadata(DOCS_DIR)
-    
-    if not docs:
-        logger.warning("No se encontraron documentos para indexar")
-        return None
-    
-    # Chunking semántico
-    logger.info("Dividiendo documentos en chunks semánticos...")
-    chunker = SemanticChunker(chunk_size=1000, chunk_overlap=200)
-    chunks = chunker.split_documents(docs)
-    logger.info(f"Documentos divididos en {len(chunks)} chunks")
-    
-    logger.info(f"Creando vectorstore con {len(chunks)} chunks...")
-    logger.info("NOTA: La creación de embeddings puede tardar varios minutos...")
-    logger.info(f"      Procesando aproximadamente {len(chunks)} fragmentos...")
+            logger.error(f"Error cargando DB: {e}")
+            return None
+
+
+def create_vectorstore(chunks: List[Document], embeddings, manager: VectorStoreManager) -> Chroma:
+    """Crea vectorstore con progreso visible"""
     
     try:
-        # Mostrar progreso estimado
         import time
         start_time = time.time()
         
+        logger.info(f"Creando vectorstore con {len(chunks)} chunks...")
+        logger.info("NOTA: La creación de embeddings puede tardar varios minutos...")
+        logger.info(f"      Procesando aproximadamente {len(chunks)} fragmentos...")
+        
         vectorstore = Chroma.from_documents(
             documents=chunks,
-            embedding=OllamaEmbeddings(model=EMBEDDING_MODEL),
-            persist_directory=DB_DIR,
+            embedding=embeddings,
+            persist_directory=DB_DIR
         )
         
         elapsed = time.time() - start_time
         logger.info(f"[OK] Base de datos creada en {elapsed:.1f} segundos")
         
         # Guardar manifiesto
-        save_manifest(DOCS_DIR, DB_DIR)
+        files_metadata = []
+        for ext in ['*.pdf', '*.md', '*.markdown', '*.txt']:
+            for path in glob.glob(os.path.join(DOCS_DIR, '**', ext), recursive=True):
+                files_metadata.append(compute_file_metadata(path))
+        
+        manager.save_manifest(files_metadata)
+        
         return vectorstore
         
     except Exception as e:
@@ -568,11 +784,11 @@ def get_vectorstore():
 
 
 def build_enhanced_prompt(query: str, context: str, sources: List[str]) -> str:
-    """Construye un prompt mejorado con instrucciones claras"""
+    """Construye un prompt más estricto que evita alucinaciones"""
     
     sources_text = "\n".join([f"- {s}" for s in sources])
     
-    prompt = f"""Eres un asistente experto en VMware ESXi. Tu objetivo es proporcionar respuestas precisas, técnicas y bien fundamentadas.
+    prompt = f"""Eres un asistente experto en VMware ESXi. Tu objetivo es proporcionar respuestas precisas basadas ÚNICAMENTE en el contexto proporcionado.
 
 CONTEXTO RECUPERADO:
 {context}
@@ -583,14 +799,13 @@ FUENTES CONSULTADAS:
 PREGUNTA DEL USUARIO:
 {query}
 
-INSTRUCCIONES:
-1. Responde de forma concisa pero completa en español
-2. Basa tu respuesta ÚNICAMENTE en el contexto proporcionado
-3. Si el contexto no contiene información suficiente, admítelo claramente
-4. Cita las fuentes cuando sea relevante (ej: "Según [nombre_archivo]...")
-5. Si hay información conflictiva, menciónalo
-6. Usa ejemplos técnicos cuando sea apropiado
-7. Mantén un tono profesional y técnico
+INSTRUCCIONES CRÍTICAS:
+1. Lee el contexto cuidadosamente
+2. Si el contexto CONTIENE la respuesta → responde de forma concisa y técnica
+3. Si el contexto NO CONTIENE la respuesta → di EXACTAMENTE: "No encontré esta información en la documentación proporcionada."
+4. NUNCA inventes información o des respuestas genéricas no basadas en el contexto
+5. Cita fragmentos textuales cuando sea posible (ej: "según el documento...")
+6. Usa español técnico y profesional
 
 RESPUESTA:"""
     
@@ -609,18 +824,28 @@ def log_retrieval_metrics(metrics: RetrievalMetrics):
                 'avg_similarity': metrics.avg_similarity_score,
                 'sources': metrics.sources_used,
                 'context_length': metrics.context_length,
-                'method': metrics.retrieval_method
+                'method': metrics.retrieval_method,
+                'reranked': metrics.reranked,
+                'query_expanded': metrics.query_expanded
             }, ensure_ascii=False) + '\n')
     except Exception as e:
         logger.error(f"Error guardando métricas: {e}")
 
 
+# ============================================================================
+# MAIN - Integración de todas las mejoras
+# ============================================================================
+
 def main():
-    """Función principal con todas las mejoras implementadas"""
+    """Función principal con todas las mejoras de relevancia integradas"""
     
     logger.info("=" * 60)
-    logger.info("SISTEMA RAG MEJORADO - VMware ESXi")
+    logger.info("SISTEMA RAG MEJORADO v2.0 - VMware ESXi")
+    logger.info("MEJORAS: Query Expansion + Reranking + Alpha Adaptativo")
     logger.info("=" * 60)
+    
+    # Configurar LLM (necesario para query expansion y reranking)
+    llm = ChatOllama(model=MODEL_NAME, temperature=0.1)
     
     # Obtener vectorstore
     vectorstore = get_vectorstore()
@@ -630,28 +855,30 @@ def main():
         return
     
     # Cargar documentos para BM25
-    logger.info("Preparando retriever híbrido...")
+    logger.info("Preparando retriever híbrido mejorado...")
     all_docs = load_documents_with_metadata(DOCS_DIR)
-    chunker = SemanticChunker(chunk_size=1000, chunk_overlap=200)
+    chunker = AdaptiveSemanticChunker(chunk_size=1200, chunk_overlap=250)
     chunks = chunker.split_documents(all_docs)
     
-    # Crear retriever híbrido
-    hybrid_retriever = HybridRetriever(vectorstore, chunks, alpha=0.6)
+    # Crear componentes mejorados
+    hybrid_retriever = ImprovedHybridRetriever(vectorstore, chunks, base_alpha=0.6)
+    query_expander = QueryExpander(llm)
+    reranker = CrossEncoderReranker(llm)
+    relevance_checker = StrictRelevanceChecker(llm)
     
-    # Configurar LLM
-    llm = ChatOllama(model=MODEL_NAME, temperature=0.1)
-    
-    # Checker de relevancia
-    relevance_checker = RelevanceChecker(llm)
-    
-    logger.info("Sistema listo para consultas")
-    print("\n" + "=" * 60)
-    print("EXPERTO EN VMWARE ESXi (RAG Mejorado)")
-    print("=" * 60)
-    print("Comandos especiales:")
+    logger.info("✓ Sistema listo con mejoras de relevancia activadas")
+    print("\n" + "=" * 70)
+    print("EXPERTO EN VMWARE ESXi (RAG Mejorado v2.0)")
+    print("=" * 70)
+    print("Mejoras activadas:")
+    print("  ✓ Query Expansion (queries cortas se expanden automáticamente)")
+    print("  ✓ Reranking con LLM (resultados reordenados por relevancia)")
+    print("  ✓ Alpha Adaptativo (pesos dinámicos según tipo de query)")
+    print("  ✓ Chunking optimizado (1200 chars, overlap 250)")
+    print("\nComandos especiales:")
     print("  - 'salir' / 'exit' / 'quit': Terminar")
     print("  - 'stats': Ver estadísticas del sistema")
-    print("=" * 60 + "\n")
+    print("=" * 70 + "\n")
     
     query_count = 0
     
@@ -667,7 +894,6 @@ def main():
                 break
             
             if query.lower() == 'stats':
-                # Mostrar estadísticas
                 try:
                     manifest_path = os.path.join(DB_DIR, 'index_manifest.json')
                     with open(manifest_path, 'r') as f:
@@ -676,25 +902,41 @@ def main():
                     print(f"  - Archivos indexados: {manifest.get('num_files', 0)}")
                     print(f"  - Última actualización: {manifest.get('created_at', 'N/A')}")
                     print(f"  - Consultas realizadas: {query_count}")
+                    print(f"  - Mejoras activas: Query Expansion, Reranking, Alpha Adaptativo")
                 except Exception as e:
                     print(f"Error mostrando estadísticas: {e}")
                 continue
             
             query_count += 1
-            logger.info(f"Procesando consulta #{query_count}: {query[:100]}...")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"CONSULTA #{query_count}: {query}")
+            logger.info(f"{'='*60}")
             
-            # Retrieval híbrido
+            # MEJORA 1: Query Expansion
+            query_expanded = query_expander.expand(query)
+            was_expanded = query_expanded != query
+            
+            if was_expanded:
+                print(f"[*] Query expandida: {query_expanded}")
+            
+            # Retrieval híbrido (con alpha adaptativo automático)
             print("[...] Buscando información relevante...")
-            results = hybrid_retriever.retrieve(query, k=5)
+            results = hybrid_retriever.retrieve(query_expanded, k=15)  # Más resultados para reranking
             
             if not results:
                 print("\n[!] No se encontró información relevante en la base de datos.")
                 continue
             
+            # MEJORA 2: Reranking
+            print("[...] Reordenando resultados por relevancia...")
+            results = reranker.rerank(query, results, top_k=5)
+            
             # Extraer documentos y calcular métricas
             docs = [doc for doc, score in results]
             scores = [score for doc, score in results]
             avg_score = sum(scores) / len(scores) if scores else 0.0
+            
+            logger.info(f"Relevancia promedio después de reranking: {avg_score:.2%}")
             
             # Construir contexto
             context_parts = []
@@ -716,27 +958,31 @@ def main():
             
             context = "\n".join(context_parts)
             
-            # Verificar relevancia
-            is_relevant, relevance_msg = relevance_checker.check_relevance(query, context)
+            # MEJORA 3: Verificación de relevancia más estricta
+            is_relevant, relevance_msg, relevance_score = relevance_checker.check_relevance(query, context, min_score=0.4)
             
             if not is_relevant:
-                logger.warning(f"Contexto no relevante: {relevance_msg}")
+                logger.warning(f"Contexto rechazado: {relevance_msg}")
                 print(f"\n[!] {relevance_msg}")
-                print("Intenta reformular tu pregunta.")
+                print("Intenta reformular tu pregunta con más detalles técnicos.")
                 continue
             
-            # Log de métricas
+            logger.info(f"Contexto aceptado: {relevance_msg}")
+            
+            # Log de métricas mejoradas
             metrics = RetrievalMetrics(
                 query=query,
                 num_chunks_retrieved=len(docs),
                 avg_similarity_score=avg_score,
                 sources_used=sources,
                 context_length=len(context),
-                retrieval_method="hybrid"
+                retrieval_method="hybrid+reranking",
+                reranked=True,
+                query_expanded=was_expanded
             )
             log_retrieval_metrics(metrics)
             
-            # Construir prompt mejorado
+            # Construir prompt mejorado (más estricto contra alucinaciones)
             prompt = build_enhanced_prompt(query, context, sources)
             
             # Generar respuesta
@@ -747,22 +993,25 @@ def main():
                 response = getattr(ai_message, 'content', str(ai_message))
                 
                 # Mostrar respuesta
-                print("=" * 60)
+                print("=" * 70)
                 print("RESPUESTA:")
-                print("=" * 60)
+                print("=" * 70)
                 print(response)
-                print("=" * 60)
+                print("=" * 70)
                 
                 # Mostrar fuentes
                 print(f"\n[FUENTES] Consultadas ({len(sources)}):")
                 for source in sources:
                     print(f"  * {source}")
                 
-                # Mostrar métricas de calidad
+                # Mostrar métricas mejoradas
                 print(f"\n[METRICAS] Calidad del retrieval:")
                 print(f"  * Chunks recuperados: {len(docs)}")
-                print(f"  * Relevancia promedio: {avg_score:.2%}")
+                print(f"  * Relevancia promedio: {avg_score:.2%} ⬆")
+                print(f"  * Score de relevancia: {relevance_score:.2%}")
                 print(f"  * Longitud del contexto: {len(context):,} caracteres")
+                print(f"  * Query expandida: {'Sí' if was_expanded else 'No'}")
+                print(f"  * Reranking aplicado: Sí")
                 
                 logger.info(f"Consulta #{query_count} completada exitosamente")
                 
