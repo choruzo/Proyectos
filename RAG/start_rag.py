@@ -163,8 +163,8 @@ def main():
         
         # Importar y ejecutar el sistema principal
         try:
-            import RAG_improvedV1
-            RAG_improvedV1.main()
+            import RAG_improved_v2_2_BOOSTING
+            RAG_improved_v2_2_BOOSTING.main()
         except KeyboardInterrupt:
             print_progress("\n\n[!] Arranque cancelado por el usuario")
             return 1

@@ -1,5 +1,3 @@
-[⬅️ Volver al índice principal](../README.md)
-
 # 🤖 Jarvis Voice Assistant - Asistente de Voz en Español
 
 > **Sistema de asistente de voz completamente en español, optimizado para Raspberry Pi 4 e Intel N95, con reconocimiento offline y control inteligente del hogar.**
@@ -17,6 +15,7 @@
 - [Instalación Detallada](#instalación-detallada)
 - [Configuración](#configuración)
 - [Uso y Comandos](#uso-y-comandos)
+- [Dashboard Web Local](#dashboard-web-local)
 - [Funciones del Asistente](#funciones-del-asistente)
 - [Estructura del Proyecto](#estructura-del-proyecto)
 - [Integración con Servicios Externos](#integración-con-servicios-externos)
@@ -93,6 +92,18 @@
 - ✅ Monitoreo de rendimiento en tiempo real
 - ✅ Limpieza automática de recursos
 - ✅ Perfilado de CPU y memoria
+
+### 📊 **Dashboard Web Local**
+- ✅ **Interfaz web moderna** en localhost:8080
+- ✅ **Métricas en tiempo real**: CPU, RAM, temperatura, disco
+- ✅ **Logs streaming** con Server-Sent Events (SSE)
+- ✅ **Control de módulos**: On/off para telegram_bot, task_scheduler, weather_cache
+- ✅ **Configuración avanzada**: 23 parámetros ajustables (TIER 1 + TIER 2)
+- ✅ **Estadísticas de uso**: Top comandos, actividad horaria, rendimiento NLU
+- ✅ **Gráficos interactivos** con Chart.js
+- ✅ **Persistencia de configuración** en JSON con hot-reload
+- ✅ **Sin autenticación** (solo red local, Fase 3 pendiente)
+- ✅ **Footprint mínimo**: ~85MB RAM, <5% CPU idle
 
 ---
 
@@ -434,7 +445,64 @@ python3 jarvis_main.py
 
 # O usando script automático
 ./run_jarvis.sh
+
+# Con Dashboard Web (recomendado)
+ENABLE_DASHBOARD=true ./run_jarvis.sh
+# Dashboard disponible en: http://localhost:8080
 ```
+
+### 📊 Dashboard Web Local
+
+El dashboard proporciona una interfaz web moderna para monitorear y controlar Jarvis:
+
+```bash
+# Opción 1: Iniciar con Jarvis
+ENABLE_DASHBOARD=true ./start_jarvis_with_rasa_docker.sh
+
+# Opción 2: Iniciar solo el dashboard
+./scripts/start_dashboard.sh
+
+# Acceder al dashboard
+firefox http://localhost:8080        # Local
+firefox http://192.168.1.X:8080     # Desde otra máquina en la red
+```
+
+**Funcionalidades del Dashboard:**
+
+1. **📈 Métricas en Tiempo Real**
+   - CPU, RAM, temperatura, uso de disco
+   - Gráficos actualizados cada segundo
+   - Detección automática de hardware (RPi4/N95/Ryzen)
+
+2. **📋 Logs en Vivo**
+   - Streaming de logs con SSE
+   - Filtrado y búsqueda
+   - Descarga de logs históricos
+
+3. **🎛️ Control de Módulos**
+   - Activar/desactivar telegram_bot
+   - Activar/desactivar task_scheduler
+   - Activar/desactivar weather_cache
+   - Estado en tiempo real
+
+4. **⚙️ Configuración** (23 parámetros)
+   - **TIER 1** (12 básicos): VAD, TTS, micrófonos, Rasa, clima
+   - **TIER 2** (11 avanzados): Performance, Whisper STT, logging
+   - Validación en tiempo real
+   - Persistencia automática en `data/dashboard_config.json`
+   - Hot-reload al reiniciar Jarvis
+
+5. **📊 Estadísticas de Uso**
+   - Top 10 comandos más usados
+   - Actividad por hora del día (heatmap)
+   - Rendimiento NLU (Rasa/Ollama/Regex)
+   - Tendencia últimos 7 días
+   - Tasa de éxito/error
+
+**Navegación:**
+- 🏠 Dashboard Principal: `/`
+- ⚙️ Configuración: `/static/config.html`
+- 📊 Estadísticas: `/static/stats.html`
 
 ### 🤖 Uso Avanzado con Rasa NLU (Opcional)
 
@@ -620,6 +688,34 @@ jarvis_complete_20251031_171259/
 │   ├── 📱 NOTIFICACIONES
 │   │   └── telegram_bot.py               # Bot de Telegram
 │   │
+│   ├── 📊 DASHBOARD WEB (dashboard/)
+│   │   ├── app.py                        # FastAPI application
+│   │   ├── config.py                     # Dashboard settings
+│   │   ├── models.py                     # Pydantic models
+│   │   ├── routes/
+│   │   │   ├── system.py                 # Métricas del sistema
+│   │   │   ├── logs.py                   # Streaming de logs (SSE)
+│   │   │   ├── modules.py                # Control de módulos
+│   │   │   ├── config_mgmt.py            # Gestión configuración
+│   │   │   └── stats.py                  # Estadísticas de uso
+│   │   ├── services/
+│   │   │   ├── metrics_collector.py      # Recolector de métricas
+│   │   │   ├── log_streamer.py           # Streamer de logs
+│   │   │   ├── module_controller.py      # Controlador de módulos
+│   │   │   ├── config_service.py         # Servicio de configuración
+│   │   │   └── stats_aggregator.py       # Agregador de estadísticas
+│   │   └── static/
+│   │       ├── index.html                # Dashboard principal
+│   │       ├── config.html               # Página configuración
+│   │       ├── stats.html                # Página estadísticas
+│   │       ├── css/dashboard.css         # Estilos
+│   │       └── js/
+│   │           ├── app.js                # Alpine.js dashboard
+│   │           ├── config.js             # Alpine.js config
+│   │           ├── stats.js              # Alpine.js stats
+│   │           ├── charts.js             # Chart.js setup
+│   │           └── api.js                # API client
+│   │
 │   ├── 🖥️ OPTIMIZACIONES
 │   │   ├── n95_config.py                 # Config para Intel N95
 │   │   └── __init__.py
@@ -653,7 +749,10 @@ jarvis_complete_20251031_171259/
 │
 ├── 💾 DATOS (data/)
 │   ├── reminders.json                    # Recordatorios guardados
-│   └── scheduled_tasks.json              # Tareas programadas
+│   ├── scheduled_tasks.json              # Tareas programadas
+│   ├── dashboard_config.json             # Configuración del dashboard
+│   ├── usage_stats.json                  # Estadísticas de uso (caché)
+│   └── weather_cache.json                # Caché de clima
 │
 ├── 📖 DOCUMENTACIÓN (docs/)
 │   ├── home_assistant/                   # Docs integración HA
@@ -663,7 +762,14 @@ jarvis_complete_20251031_171259/
 │   ├── tareas_programadas/               # Docs tareas programadas
 │   └── telegram/                         # Docs integración Telegram
 │
-├── 🧪 PRUEBAS (test/ y tests/)
+├── 🧪 PRUEBAS (unitary_tests/ y tests/)
+│   ├── unitary_tests/dashboard/          # Tests del dashboard web
+│   │   ├── test_config_service.py        # Tests configuración (25 tests)
+│   │   ├── test_log_streamer.py          # Tests streaming logs (8 tests)
+│   │   ├── test_metrics_collector.py     # Tests métricas (8 tests)
+│   │   ├── test_module_controller.py     # Tests control módulos (12 tests)
+│   │   └── test_stats_aggregator.py      # Tests estadísticas (16 tests)
+│   ├── unitary_tests/test_config_overrides.py  # Tests carga overrides (7 tests)
 │   ├── test/home_assistant/              # Tests Home Assistant
 │   ├── test/hora_fecha/                  # Tests hora/fecha
 │   ├── test/Meteorologia/                # Tests meteorología
@@ -687,6 +793,57 @@ jarvis_complete_20251031_171259/
 ---
 
 ## 🔗 Integración con Servicios Externos
+
+### 📊 Dashboard Web Local (Integrado)
+
+```bash
+# El dashboard se inicia automáticamente con:
+ENABLE_DASHBOARD=true ./start_jarvis_with_rasa_docker.sh
+
+# O manualmente:
+cd jarvis_modules/dashboard
+python -m uvicorn app:app --host 0.0.0.0 --port 8080
+
+# Acceder desde navegador
+http://localhost:8080
+```
+
+**API Endpoints Disponibles:**
+
+```bash
+# Sistema
+GET  /api/system/status          # Estado de Jarvis
+GET  /api/system/metrics         # Métricas (CPU, RAM, etc.)
+
+# Logs
+GET  /api/logs/stream            # Server-Sent Events streaming
+GET  /api/logs/tail?lines=100    # Últimas N líneas
+
+# Módulos
+GET  /api/modules                # Lista de módulos
+POST /api/modules/{name}/toggle  # Activar/desactivar módulo
+
+# Configuración
+GET  /api/config/current         # Config actual
+GET  /api/config/defaults        # Config por defecto
+PUT  /api/config/update          # Actualizar config
+POST /api/config/reset           # Resetear a defaults
+GET  /api/config/metadata        # Metadata de campos
+
+# Estadísticas
+GET  /api/stats/summary          # Resumen general
+GET  /api/stats/commands/top     # Top comandos
+GET  /api/stats/activity/hourly  # Actividad por hora
+GET  /api/stats/activity/daily   # Tendencia diaria
+GET  /api/stats/nlu/performance  # Rendimiento NLU
+```
+
+**Stack Tecnológico:**
+- Backend: FastAPI + Uvicorn (async)
+- Frontend: Alpine.js (15KB) + Vanilla JS
+- Real-time: Server-Sent Events (SSE)
+- Charts: Chart.js
+- Persistencia: JSON files
 
 ### 🌤️ AEMET (Meteorología España)
 
@@ -1004,13 +1161,14 @@ python3 -i jarvis_main.py
 
 ## 📊 Estadísticas del Proyecto
 
-- 📝 **Líneas de código**: 8000+
-- 📦 **Módulos**: 15+
-- 🧪 **Tests**: 30+
+- 📝 **Líneas de código**: 11,300+ (8,000 core + 3,300 dashboard)
+- 📦 **Módulos**: 20+ (15 core + 5 dashboard)
+- 🧪 **Tests**: 107+ (30 core + 69 dashboard + 8 integration)
 - 📖 **Documentación**: 50+ páginas
 - 🌍 **Idiomas soportados**: Español
-- 🔌 **Integraciones**: 6+ servicios
+- 🔌 **Integraciones**: 7+ servicios (AEMET, Home Assistant, Telegram, Ollama, Rasa, Dashboard, Porcupine)
 - 🎵 **Comandos**: 100+ variantes
+- 📊 **Dashboard**: 5 endpoints REST, 4 gráficos, 23 parámetros configurables
 
 ---
 
@@ -1079,8 +1237,8 @@ MIT License - Libre para uso personal y comercial
 
 **¡Disfruta tu asistente Jarvis! 🤖✨**
 
-*Última actualización: 14 de noviembre de 2025*
-*Versión: Complete Package 20251031*
+*Última actualización: 31 de enero de 2026*
+*Versión: Complete Package 20251031 + Dashboard Web v1.0*
 
 
     

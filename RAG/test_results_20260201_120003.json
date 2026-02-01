@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-02-01T12:00:03.910713",
+  "total_tests": 8,
+  "successful": 8,
+  "not_relevant": 0,
+  "errors": 0,
+  "expanded_queries": 5,
+  "avg_relevance": 0.9375,
+  "results": [
+    {
+      "query": "apagar vm",
+      "query_length": 2,
+      "was_expanded": true,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "Documentacion_Entorno_VMware.md",
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.7656012347558889,
+      "response": "Según el contexto, hay varias formas de apagar una máquina virtual (VM) en VMware ESXi:\n\n1. **Opción 1:** Utilizar el comando `vim-cmd` para enviar señal de apagado a la VM:\n```bash\nvim-cmd vmsvc/powe...",
+      "response_length": 1034
+    },
+    {
+      "query": "migrar vm",
+      "query_length": 2,
+      "was_expanded": true,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.6932780982567822,
+      "response": "Después de leer cuidadosamente los fragmentos del contexto, encontré la siguiente información relevante para migrar una máquina virtual (VM) con vSphere vMotion:\n\n**Requisitos y limitaciones**\n\n* La v...",
+      "response_length": 1632
+    },
+    {
+      "query": "crear snapshot",
+      "query_length": 2,
+      "was_expanded": true,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.7039351638075968,
+      "response": "Después de leer cuidadosamente el contexto, encontré la siguiente información relevante:\n\n**Crear instantáneas**\n\nPara crear una instantánea de una máquina virtual en VMware vSphere 8.0, siga los paso...",
+      "response_length": 1221
+    },
+    {
+      "query": "cómo crear una máquina virtual en ESXi",
+      "query_length": 7,
+      "was_expanded": false,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.6701400166432225,
+      "response": "Después de revisar cuidadosamente el contexto, encontré la siguiente información relevante para crear una máquina virtual en ESXi:\n\n**Crear una máquina virtual**\n\n1. Conéctese a vCenter Server mediant...",
+      "response_length": 1157
+    },
+    {
+      "query": "configuración de red en VMware",
+      "query_length": 5,
+      "was_expanded": true,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.6764120830084982,
+      "response": "Después de leer cuidadosamente el contexto, encontré varias secciones relevantes sobre configuración de red en VMware:\n\n**1. Configuración de RDMA over Converged Ethernet**\n\nEn la sección \"Requisitos ...",
+      "response_length": 1748
+    },
+    {
+      "query": "cuál es el procedimiento completo para realizar una migración vMotion de una máquina virtual entre hosts ESXi",
+      "query_length": 17,
+      "was_expanded": true,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 0.75,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.5758601211070897,
+      "response": "Después de leer cuidadosamente todos los fragmentos del contexto, encontré la información relevante para realizar una migración vMotion de una máquina virtual entre hosts ESXi.\n\n**Procedimiento comple...",
+      "response_length": 1916
+    },
+    {
+      "query": "cómo instalar Docker en ESXi",
+      "query_length": 5,
+      "was_expanded": false,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 0.75,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.6197861553511995,
+      "response": "Lo siento, pero no encontré ninguna información específica sobre cómo instalar Docker en ESXi en los fragmentos del contexto proporcionados. Sin embargo, puedo sugerir algunas posibles soluciones basa...",
+      "response_length": 1396
+    },
+    {
+      "query": "configuración de vSwitch y VLAN",
+      "query_length": 5,
+      "was_expanded": false,
+      "num_initial_results": 40,
+      "num_reranked": 8,
+      "is_relevant": true,
+      "relevance_score": 1.0,
+      "sources": [
+        "vmware-vsphere-8-0.pdf"
+      ],
+      "avg_rerank_score": 0.6273424896245896,
+      "response": "Después de leer cuidadosamente el contexto, encontré información relevante sobre la configuración de vSwitch y VLAN.\n\n**Configuración de vSwitch**\n\nEn el fragmento \"VMware vSphere 8.0\" se menciona que...",
+      "response_length": 1656
+    }
+  ]
+}
