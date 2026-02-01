@@ -18,6 +18,11 @@ RAG/stats
 RAG/UPGRADE_v2.3_SUMMARY.md
 RAG/UPGRADE_v2.3_COMPLETION.md
 RAG/QUICK_START_v2.3.md
+RAG/__pycache__/
+RAG/__pycache__/RAG_improved_v2_2_BOOSTING.cpython-310.pyc
+RAG/test/*
+RAG/FIX*
+RAG/backups/*
 
 
 # Docs generated or backups
