@@ -81,10 +81,14 @@
 - ✅ Fallback a OpenWeather como respaldo
 
 ### 📱 **Integración Telegram**
+- ✅ **Bot bidireccional** - Control completo por texto desde cualquier lugar
+- ✅ Comandos de texto ejecutan la misma pipeline NLU que voz
+- ✅ Seguridad con whitelist y rate limiting
 - ✅ Notificaciones de recordatorios
 - ✅ Alertas del sistema
-- ✅ Mensajes de estado
-- ✅ Logging remoto
+- ✅ Comandos: /start, /help, /status
+- ✅ Audit logging de todos los comandos
+- ✅ Thread separado sin bloquear audio
 
 ### ⚡ **Optimizaciones**
 - ✅ Gestión de memoria para dispositivos con recursos limitados
@@ -388,8 +392,13 @@ TTS_SPEED_SCALE = 0.8          # Velocidad (0.5-2.0)
 AEMET_API_KEY = "tu_clave_aemet"
 HOME_ASSISTANT_URL = "http://192.168.1.100:8123"
 HOME_ASSISTANT_TOKEN = "tu_token_ha"
+
+# === TELEGRAM BOT (BIDIRECCIONAL) ===
 TELEGRAM_BOT_TOKEN = "tu_bot_token"
 TELEGRAM_CHAT_ID = "tu_chat_id"
+TELEGRAM_AUTHORIZED_CHAT_IDS = [tu_chat_id]  # Lista de usuarios autorizados
+TELEGRAM_BOT_ENABLED = True                  # Activar/desactivar bot
+TELEGRAM_MAX_MESSAGES_PER_MINUTE = 20        # Rate limiting
 
 # === OPTIMIZACIONES ===
 ENABLE_PROFILING = False        # Activar perfilado de rendimiento
@@ -548,6 +557,48 @@ Jarvis: [beep sonoro]
 Usuario: "reproduce música clásica"
 Jarvis: "Reproduciendo música clásica"
 ```
+
+### 📱 Control por Telegram
+
+Además del control por voz, puedes controlar Jarvis mediante mensajes de texto desde Telegram.
+
+#### Configuración Rápida
+
+```bash
+# 1. Crear bot con @BotFather en Telegram
+# 2. Obtener tu chat ID (usa @userinfobot)
+# 3. Configurar variables de entorno
+export TELEGRAM_BOT_TOKEN="tu_token_de_botfather"
+export TELEGRAM_CHAT_ID="tu_chat_id"
+export TELEGRAM_AUTHORIZED_CHAT_IDS="chat_id1,chat_id2"  # Opcional
+
+# 4. Iniciar Jarvis (el bot inicia automáticamente)
+./start_jarvis_with_rasa_docker.sh
+```
+
+#### Uso
+
+**Comandos del sistema:**
+- `/start` - Mensaje de bienvenida
+- `/help` - Lista de comandos disponibles
+- `/status` - Estado del sistema (CPU, RAM, disco)
+
+**Comandos de texto:** Envía cualquier comando como si hablaras con Jarvis:
+```
+¿Qué hora es?
+Pon música rock
+¿Qué tiempo hace en Madrid?
+Enciende la luz del salón
+Recuérdame comprar leche mañana a las 10
+```
+
+**Seguridad:**
+- ✅ Whitelist de usuarios autorizados
+- ✅ Rate limiting (20 mensajes/minuto)
+- ✅ Audit logging de todos los comandos
+- ✅ Thread separado sin bloquear audio
+
+📖 **Documentación completa:** [docs/telegram/GUIA_RAPIDA.md](docs/telegram/GUIA_RAPIDA.md)
 
 > 📚 **Para más información sobre Rasa NLU**: Consulta la [documentación completa de Rasa](rasa_config/README.md) que incluye configuración detallada, ejemplos y solución de problemas.
 

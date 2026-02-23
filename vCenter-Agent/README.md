@@ -1,5 +1,3 @@
-[⬅️ Volver al índice principal](../README.md)
-
 # 🤖 vCenter Agent System - Multi-Agent AI Platform
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -11,20 +9,21 @@
 
 **Key Highlights**:
 - 🧠 **Dual AI Agents**: vCenter Specialist + Documentation Consultant
-- 🔍 **Advanced RAG**: Semantic search with 77 tests (87% passing)
-- 🌐 **Web Interface**: Real-time chat, admin dashboard, monitoring
+- 🔍 **Advanced RAG**: Hybrid ChromaDB + BM25 semantic search
+- 🌐 **Web Interface**: Real-time SSE streaming chat, Markdown rendering, admin dashboard, monitoring
 - 🔐 **Enterprise Security**: Audit trails, structured logging, role-based access
 - ⚡ **Performance**: Connection pooling, caching, optimized queries
-- 📊 **MCP Integration**: 17 standardized tools for vCenter operations
+- 🧭 **Smart Routing**: 4-layer query classifier (regex + intent + scoring + LLM)
+- 📊 **MCP Integration**: 29 standardized tools for vCenter operations (v3.0)
 
 ## 🌟 Features
 
 ### 🔧 vCenter Agent - VMware Operations
 - **Natural Language Interface**: Talk to your vCenter infrastructure in plain language
-- **17 MCP Tools**: Standardized operations (VMs, hosts, datastores, snapshots, cloning)
+- **29 MCP Tools (v3.0)**: Standardized operations across 6 groups — VMs, hosts, datastores, snapshots, reconfiguration, ESXi direct monitoring, events/alarms
 - **User Isolation**: Per-user VM namespaces and VLAN mapping
 - **Connection Pooling**: Optimized pyVmomi connections with automatic cleanup
-- **Dual Model Architecture**: Query formatter (qwen3:1.7b) + executor (llama3.1:8b)
+- **Dual Model Architecture**: Query formatter (gpt-oss:20b) + executor (gpt-oss:20b)
 - **Real-time Monitoring**: Live metrics from ESXi hosts and VMs
 - **Advanced Operations**:
   - VM deployment from templates (single/multi-MCU environments)
@@ -33,22 +32,31 @@
   - Performance metrics export
   - Datastore browsing and management
 
-### 📚 Documentation Consultant - Advanced RAG System
-- **Semantic Search**: Query normalization + concept expansion (7 semantic families)
-- **Smart Retrieval**: Chunk-based search with relevance scoring (keyword: 3.0, semantic: 1.5, section: 5.0)
+### 📚 Documentation Consultant - Advanced RAG v2.4
+- **Hybrid Retrieval**: ChromaDB vector search + BM25 keyword matching with adaptive alpha
+- **Query Expansion**: 62 term families (VMware + project tools), bidirectional expansion
+- **Smart Reranking**: 12 final results from 40 candidates (term_freq with Spanish stop-word filtering + length + position)
+- **Enhanced BM25**: Indexes page content + file name + section headers — improves tool-name retrieval
+- **Context Window**: `num_ctx=16384` for Ollama (default 4096 silently truncates RAG context >5500 tokens)
+- **Low Temperature**: `temperature=0.1` for factual, hallucination-resistant RAG responses
 - **Source Citation**: Automatic references in format `file.md#Section`
-- **Markdown Native**: Optimized for .md files with section extraction
-- **Low False Negatives**: Improved from 60% to <20% (target: <15%)
-- **Auto-Indexing**: Whoosh-based indexing with cache management
-- **Context Optimization**: 800-char fragments (up from 300) for better LLM context
-- **Testing**: 77 comprehensive tests (RAG, integration, E2E)
+- **Folder Filtering**: Strict / boosting / global search modes
+- **Embedding Cache**: LRU cache (1000 queries, ~30% faster on repeats)
+- **Multi-format**: PDF, MD, TXT document support with SHA1 manifest tracking
+- **Metrics Logging**: JSONL retrieval metrics per query (`logs/retrieval_metrics.jsonl`)
+
+### 💬 Chat Interface
+- **Real-time Streaming**: SSE-based token streaming with routing indicator (`event: routing/token/done/heartbeat`)
+- **Markdown Rendering**: Full GFM via marked.js v15 — code blocks, tables, lists, bold, blockquotes
+- **Fallback**: `/chat` endpoint as automatic fallback if SSE unavailable
 
 ### 🎯 Intelligent Orchestration
-- **Hybrid Routing**: Keyword matching (agents.yaml) + LLM classification
+- **4-Layer Query Classifier**: Regex patterns → intent detection → weighted scoring → LLM fallback
+- **Hybrid Routing**: agents.yaml keywords + `query_classifier.py` + LLM classification
+- **Heuristic Safety Net**: Fallback routing when LLM is unavailable (no silent failures)
 - **Dual Session System**: Flask sessions + SQLite persistence
 - **Context Preservation**: Per-user conversation memory with LangChain
 - **Agent Isolation**: Complete separation of tools and knowledge sources
-- **Fallback Handling**: Graceful degradation on routing failures
 - **Performance**: <3s average response time for simple queries
 
 ### 🔐 Enterprise-Grade Security
@@ -74,7 +82,7 @@
 vcenter_agent_system/
 ├── src/                         # Source code
 │   ├── core/                    # Core agent functionality
-│   │   ├── agent.py            # vCenter agent (17 MCP tools, LangChain integration)
+│   │   ├── agent.py            # vCenter agent (29 MCP tools, LangChain integration)
 │   │   └── doc_consultant.py   # Doc agent (RAG system, semantic search)
 │   ├── api/                     # Web API and routes
 │   │   └── main_agent.py       # Flask orchestrator (routing, sessions, auth)
@@ -84,8 +92,19 @@ vcenter_agent_system/
 │   │   └── session_store.py    # SQLite session persistence
 │   └── utils/                   # Utility modules
 │       ├── vcenter_tools.py    # pyVmomi operations, connection pool
-│       ├── doc_tools.py        # Markdown processing, search (800 char fragments)
-│       ├── rag_retriever.py    # RAG core (semantic families, scoring)
+│       ├── query_classifier.py # 4-layer query classifier (routing logic)
+│       ├── doc_tools.py        # Hybrid RAG v2.4 initialization (ChromaDB + BM25)
+│       ├── rag_retriever.py    # RAG core + v2.4 query expander bridge
+│       ├── hybrid_retriever.py # Vector + BM25 combination with adaptive alpha
+│       ├── query_expander.py   # 62 term families (VMware + project), bidirectional expansion
+│       ├── embedding_cache.py  # LRU cache (1000 queries)
+│       ├── reranker.py         # Heuristic multi-factor reranking
+│       ├── search_modes.py     # Strict/boosting/global folder filtering
+│       ├── bm25_retriever.py   # BM25 keyword-based retrieval
+│       ├── chunker.py          # Adaptive semantic chunking (MD-aware)
+│       ├── document_loader.py  # Multi-format loader (PDF, MD, TXT)
+│       ├── vector_store_manager.py # ChromaDB + SHA1 manifest management
+│       ├── retrieval_metrics.py # JSONL retrieval metrics logging
 │       ├── structured_logger.py # Structured logging framework
 │       ├── logging_config.py   # Logging configuration
 │       └── context_middleware.py # Request context tracking
@@ -104,7 +123,7 @@ vcenter_agent_system/
 │   └── index.html              # Landing page
 ├── static/                      # Static web assets
 │   ├── css/                    # Stylesheets (responsive design)
-│   └── js/                     # JavaScript (fetch API, Chart.js)
+│   └── js/                     # JavaScript (fetch API, Chart.js, marked.js v15)
 ├── docs/                        # Documentation repository
 │   ├── *.md                    # Markdown documentation files
 │   └── media/                  # Images and diagrams
@@ -112,11 +131,15 @@ vcenter_agent_system/
 │   ├── test_doc_agent.py       # Doc consultant tests
 │   ├── test_orchestrator.py    # Multi-agent routing tests
 │   └── test_vcenter_tools.py   # vCenter operation tests
-├── unitary_test/                # Unit tests (77 tests, 67 passing)
+├── unitary_test/                # Unit tests (188+ tests)
+│   ├── test_routing.py         # Orchestrator routing tests (39 tests)
+│   ├── test_query_classifier.py # 4-layer classifier tests (57 tests)
+│   ├── test_mcp_bypass_prevention.py # MCP security tests (8 tests)
 │   ├── test_rag_retriever.py   # RAG algorithm tests (28 tests)
 │   ├── test_rag_integration.py # RAG with real docs (9 tests)
 │   ├── test_doc_agent_e2e.py   # End-to-end tests (15 tests)
 │   ├── test_doc_tools.py       # Document utilities (25 tests)
+│   ├── conftest.py             # Shared fixtures and mock registry
 │   ├── requirements_test.txt   # Test dependencies
 │   └── run_tests.py            # Test runner with coverage
 ├── logs/                        # Structured log files (JSON format)
@@ -191,8 +214,8 @@ vcenter_agent_system/
 4. **Install Ollama models**
    ```bash
    # Recommended models
-   ollama pull llama3.1:8b      # Main executor model (8GB RAM)
-   ollama pull qwen3:1.7b       # Query formatter (1.7GB RAM)
+   ollama pull gpt-oss:20b      # Main executor model (8GB RAM)
+   ollama pull gpt-oss:20b       # Query formatter (1.7GB RAM)
 
    # Alternative models
    ollama pull llama3.2:3b      # Lighter alternative
@@ -227,8 +250,8 @@ vcenter_agent_system/
    python run.py
 
    # Production mode (with environment variables)
-   export ORCH_EXECUTOR_MODEL="llama3.1:8b"
-   export ORCH_FORMATTER_MODEL="qwen3:1.7b"
+   export ORCH_EXECUTOR_MODEL="gpt-oss:20b"
+   export ORCH_FORMATTER_MODEL="gpt-oss:20b"
    export FLASK_ENV="production"
    python run.py
    ```
@@ -321,7 +344,7 @@ The system automatically routes queries to the appropriate agent using hybrid ro
 python run.py
 
 # Run with specific model configuration
-ORCH_EXECUTOR_MODEL=llama3.1:8b ORCH_FORMATTER_MODEL=qwen3:1.7b python run.py
+ORCH_EXECUTOR_MODEL=gpt-oss:20b ORCH_FORMATTER_MODEL=gpt-oss:20b python run.py
 
 # Run MCP server standalone (for external clients)
 python -m vcenter_agent_system.server.mcp_vcenter_server
@@ -584,8 +607,8 @@ python demo_rag_improvement.py
 
 **Memory**:
 - Base Flask app: ~150 MB
-- llama3.1:8b model: ~8 GB
-- qwen3:1.7b model: ~1.7 GB
+- gpt-oss:20b model: ~8 GB
+- gpt-oss:20b model: ~1.7 GB
 - Document index (Whoosh): ~5-50 MB (depends on doc count)
 - **Total peak**: ~10 GB
 
@@ -702,7 +725,7 @@ python setup.py sdist bdist_wheel
                  │                           │
     ┌────────────▼────────────┐   ┌─────────▼──────────┐
     │   MCP Tool Registry     │   │   RAG Retriever    │
-    │  (17 vCenter tools)     │   │ (semantic search)  │
+    │  (29 vCenter tools)     │   │ (semantic search)  │
     └────────────┬────────────┘   └─────────┬──────────┘
                  │                           │
     ┌────────────▼────────────┐   ┌─────────▼──────────┐
@@ -757,7 +780,7 @@ User Query: "¿Qué problemas hay con las VMs?"
                  ↓
 ┌────────────────────────────────────────────────┐
 │  6. LLM Response Generation                    │
-│     Model: llama3.1:8b (8K context window)     │
+│     Model: gpt-oss:20b (8K context window)     │
 │     Prompt: Strict RAG (no hallucination)      │
 │     Output: Answer + Sources (file.md#Section) │
 └────────────────────────────────────────────────┘
@@ -803,29 +826,21 @@ Standalone MCP Server (optional):
 ┌─────────────────────────────────────────┐
 │  mcp_vcenter_server.py                  │
 │  - Stdio transport                      │
-│  - Exposes all 17 tools via MCP         │
+│  - Exposes all 29 tools via MCP (v3.0)  │
 │  - Can be used by external MCP clients  │
 └─────────────────────────────────────────┘
 ```
 
-**MCP Tools Available** (17 total):
-1. `get_templates` - List VM templates
-2. `get_hosts` - List ESXi hosts
-3. `get_datastores` - List datastores
-4. `deploy_from_template` - Deploy single VM
-5. `deploy_dev_env` - Deploy 1-MCU environment
-6. `deploy_dev_env_2mcu` - Deploy 2-MCU environment
-7. `list_vms_for_user` - User's VMs
-8. `list_vms_by_host` - VMs on specific host
-9. `list_all_vms` - All VMs
-10. `delete_vms` - Delete VMs (with validation)
-11. `clone_mcu_template` - Clone MCU template
-12. `clone_multiple_mcu_template` - Clone multiple MCUs
-13. `generate_resource_report` - Resource usage
-14. `get_obsolete_vms` - Find old VMs
-15. `export_vm_performance` - Performance metrics
-16. `power_operations` - Power on/off/reset/suspend
-17. `get_vm_details` - Detailed VM info
+**MCP Tools Available** (29 total — v3.0):
+
+| Group | Tools |
+|-------|-------|
+| Core VM (15) | `get_templates`, `get_hosts_tool`, `get_datastores_tool`, `deploy_dev_env`, `deploy_dev_env_2mcu`, `list_vms_for_user`, `delete_vms_tool`, `clone_mcu_template`, `list_vms_by_host_tool`, `list_all_vms_tool`, `generate_resource_report_tool`, `get_obsolete_vms_tool`, `export_vm_performance_tool`, `power_operations_tool`, `get_vm_details_tool` |
+| Snapshots (4) | `create_snapshot_tool`, `list_snapshots_tool`, `revert_snapshot_tool`, `delete_snapshot_tool` |
+| VM Reconfig (3) | `reconfigure_vm_tool`, `rename_vm_tool`, `change_vm_network_tool` |
+| ESXi Direct (3) | `get_esxi_status_tool`, `get_esxi_resources_tool`, `get_esxi_performance_tool` |
+| Datastore (2) | `browse_datastore_tool`, `get_all_datastores_tool` |
+| Events/Alarms (2) | `get_vm_events_tool`, `get_active_alarms_tool` |
 
 ### Connection Management
 
@@ -1332,7 +1347,7 @@ ollama list
 ollama serve
 
 # Verify model is available
-ollama pull llama3.1:8b
+ollama pull gpt-oss:20b
 ```
 
 **"vCenter connection failed"**
@@ -1428,9 +1443,9 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 
 ---
 
-**Project Status**: ✅ Active Development  
-**Latest Update**: 2026-01-24  
-**Version**: 2.0  
+**Project Status**: ✅ Active Development
+**Latest Update**: 2026-02-22
+**Version**: 2.1
 **Maintainer**: jmartinb
 
 ---
@@ -1442,8 +1457,3 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 Made with ❤️ and 🤖 AI
 
 </div>
-
-![Login interface](./assets/Login.gif)
-![Admin interface](./assets/Admin.gif)
-![Chat interface](./assets/Chat.gif)
-
