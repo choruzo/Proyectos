@@ -1,0 +1,49 @@
+[Unit]
+Description=GALTTCMC CI/CD Web UI
+Documentation=https://github.com/indra/galttcmc-cicd
+After=network.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/cicd/web
+Environment="PATH=/usr/bin:/usr/local/bin"
+Environment="FLASK_APP=app.py"
+Environment="FLASK_ENV=production"
+Environment="WEB_HOST=0.0.0.0"
+Environment="WEB_PORT=8080"
+Environment="WEB_DEBUG=false"
+EnvironmentFile=-/home/agent/cicd/config/.env
+
+# Gunicorn production server
+ExecStart=/usr/bin/python3.6 -m gunicorn \
+    --bind 0.0.0.0:8080 \
+    --workers 2 \
+    --threads 2 \
+    --timeout 120 \
+    --access-logfile /home/agent/cicd/logs/web_access.log \
+    --error-logfile /home/agent/cicd/logs/web_error.log \
+    --log-level info \
+    app:app
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=0
+StartLimitBurst=5
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/agent/cicd/logs
+ReadWritePaths=/home/agent/cicd/db
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=512M
+
+[Install]
+WantedBy=multi-user.target

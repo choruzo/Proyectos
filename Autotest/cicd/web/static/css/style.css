@@ -1,0 +1,171 @@
+/* Custom CSS for GALTTCMC CI/CD Web UI */
+
+/* Smooth transitions */
+* {
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.dark ::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+/* Status badge animations */
+.animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Log viewer terminal style */
+pre code {
+    font-family: 'Courier New', Courier, monospace;
+    line-height: 1.5;
+}
+
+/* Table hover effect */
+tbody tr {
+    transition: background-color 0.15s ease-in-out;
+}
+
+/* Loading spinner */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Toast notifications positioning */
+#toast-container {
+    max-width: 400px;
+}
+
+/* Modal backdrop blur */
+.modal-backdrop {
+    backdrop-filter: blur(4px);
+}
+
+/* Chart containers */
+canvas {
+    max-height: 400px;
+}
+
+/* Status indicator pulse */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Button disabled state */
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Card shadow on hover */
+.card-hover:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    transform: translateY(-2px);
+    transition: all 0.2s ease-in-out;
+}
+
+/* Link hover effect */
+a {
+    transition: color 0.15s ease-in-out;
+}
+
+/* Badge styles for different statuses */
+.badge-success {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.dark .badge-success {
+    background-color: #14532d;
+    color: #86efac;
+}
+
+.badge-failed {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.dark .badge-failed {
+    background-color: #7f1d1d;
+    color: #fca5a5;
+}
+
+.badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.dark .badge-pending {
+    background-color: #78350f;
+    color: #fde047;
+}
+
+/* Code block styling */
+code {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+}
+
+/* Responsive table */
+@media (max-width: 640px) {
+    table {
+        font-size: 0.75rem;
+    }
+    
+    th, td {
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Dark mode specific adjustments */
+.dark {
+    color-scheme: dark;
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    body {
+        background: white;
+    }
+}

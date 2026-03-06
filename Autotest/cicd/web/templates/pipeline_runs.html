@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Pipeline Runs - GALTTCMC CI/CD Pipeline{% endblock %}
+
+{% block content %}
+<div x-data="pipelineRunsData()" x-init="init()">
+    <!-- Header -->
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Pipeline Runs</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Historial completo de ejecuciones del pipeline
+        </p>
+    </div>
+    
+    <!-- Filters -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 mb-6">
+        <div class="flex flex-wrap gap-4 items-center">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status Filter</label>
+                <select x-model="statusFilter" @change="loadDeployments(1)" 
+                        class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="all">All</option>
+                    <option value="success">Success</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                    <option value="compiling">Compiling</option>
+                    <option value="analyzing">Analyzing</option>
+                    <option value="deploying">Deploying</option>
+                </select>
+            </div>
+            
+            <div class="flex-1"></div>
+            
+            <button @click="loadDeployments(currentPage)" 
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+    
+    <!-- Deployments Table -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tag</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Started</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Finished</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    <template x-for="deployment in deployments" :key="deployment.id">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white" x-text="deployment.id"></td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="deployment.tag"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': deployment.status === 'success',
+                                          'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': deployment.status === 'failed',
+                                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': ['pending', 'compiling', 'analyzing', 'deploying'].includes(deployment.status),
+                                          'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300': !['success', 'failed', 'pending', 'compiling', 'analyzing', 'deploying'].includes(deployment.status)
+                                      }"
+                                      x-text="deployment.status"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.started_at"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.finished_at"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.duration"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button @click="viewDetails(deployment.id)" 
+                                        class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">
+                                    View Details
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="deployments.length === 0">
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <p class="mt-2">No deployments found</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+            <div class="flex-1 flex justify-between sm:hidden">
+                <button @click="loadDeployments(currentPage - 1)" 
+                        :disabled="currentPage === 1"
+                        class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    Previous
+                </button>
+                <button @click="loadDeployments(currentPage + 1)" 
+                        :disabled="currentPage === totalPages"
+                        class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    Next
+                </button>
+            </div>
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm text-gray-700 dark:text-gray-300">
+                        Showing page <span class="font-medium" x-text="currentPage"></span> of <span class="font-medium" x-text="totalPages"></span>
+                        <span class="text-gray-500 dark:text-gray-400"> (Total: <span x-text="totalDeployments"></span> deployments)</span>
+                    </p>
+                </div>
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <button @click="loadDeployments(currentPage - 1)" 
+                                :disabled="currentPage === 1"
+                                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <span x-text="currentPage"></span>
+                        </span>
+                        <button @click="loadDeployments(currentPage + 1)" 
+                                :disabled="currentPage === totalPages"
+                                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Detail Modal -->
+    <div x-show="showDetailModal" 
+         x-cloak
+         class="fixed z-10 inset-0 overflow-y-auto" 
+         aria-labelledby="modal-title" 
+         role="dialog" 
+         aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDetailModal = false"></div>
+            
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+                                Deployment Details - <span x-text="selectedDeployment.tag"></span>
+                            </h3>
+                            
+                            <div class="space-y-4">
+                                <!-- Info básica -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Status</label>
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                              :class="{
+                                                  'bg-green-100 text-green-800': selectedDeployment.status === 'success',
+                                                  'bg-red-100 text-red-800': selectedDeployment.status === 'failed',
+                                                  'bg-yellow-100 text-yellow-800': ['pending', 'compiling', 'analyzing', 'deploying'].includes(selectedDeployment.status)
+                                              }"
+                                              x-text="selectedDeployment.status"></span>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Duration</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.duration"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Started At</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.started_at"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Finished At</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.finished_at"></p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Error message -->
+                                <div x-show="selectedDeployment.error_message">
+                                    <label class="block text-sm font-medium text-red-600 dark:text-red-400">Error Message</label>
+                                    <p class="text-sm text-red-900 dark:text-red-200 bg-red-50 dark:bg-red-900/20 p-3 rounded mt-1" x-text="selectedDeployment.error_message"></p>
+                                </div>
+                                
+                                <!-- ISO path -->
+                                <div x-show="selectedDeployment.iso_path">
+                                    <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">ISO Path</label>
+                                    <p class="text-sm text-gray-900 dark:text-white font-mono bg-gray-100 dark:bg-gray-700 p-2 rounded" x-text="selectedDeployment.iso_path"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button @click="showDetailModal = false" 
+                            type="button" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function pipelineRunsData() {
+    return {
+        deployments: [],
+        currentPage: 1,
+        totalPages: 1,
+        totalDeployments: 0,
+        statusFilter: 'all',
+        showDetailModal: false,
+        selectedDeployment: {},
+        
+        async init() {
+            await this.loadDeployments(1);
+        },
+        
+        async loadDeployments(page) {
+            try {
+                const response = await fetch(`/api/deployments?page=${page}&status=${this.statusFilter}`);
+                const data = await response.json();
+                
+                this.deployments = data.deployments;
+                this.currentPage = data.page;
+                this.totalPages = data.pages;
+                this.totalDeployments = data.total;
+            } catch (error) {
+                console.error('Error loading deployments:', error);
+            }
+        },
+        
+        async viewDetails(deploymentId) {
+            try {
+                const response = await fetch(`/api/deployment/${deploymentId}`);
+                this.selectedDeployment = await response.json();
+                this.showDetailModal = true;
+            } catch (error) {
+                console.error('Error loading deployment details:', error);
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+[Unit]
+Description=CI/CD Pipeline Service - GALTTCMC
+Documentation=https://git.indra.es/git/GALTTCMC/GALTTCMC
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/cicd
+
+# Comando principal
+ExecStart=/home/agent/cicd/ci_cd.sh daemon
+
+# Reinicio automático en caso de fallo
+Restart=always
+RestartSec=30
+
+# Timeout para inicio y parada
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Logging a ficheros propios
+StandardOutput=append:/home/agent/cicd/logs/service.log
+StandardError=append:/home/agent/cicd/logs/service_error.log
+
+# Variables de entorno
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/agent"
+Environment="LANG=es_ES.UTF-8"
+
+# Cargar variables de entorno desde fichero (credenciales)
+EnvironmentFile=-/home/agent/cicd/config/.env
+
+# Seguridad
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Limites de recursos
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
