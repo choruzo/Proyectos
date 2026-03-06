@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-people me-2"></i>Gestión de Usuarios</h2>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCreate">
+    <i class="bi bi-person-plus me-1"></i>Nuevo usuario
+  </button>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover align-middle mb-0" id="users-table">
+      <thead class="table-dark">
+        <tr>
+          <th>Usuario</th>
+          <th>Email</th>
+          <th>Rol</th>
+          <th>Estado</th>
+          <th>Creado</th>
+          <th>Último login</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="7" class="text-center py-4 text-muted">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: Crear usuario -->
+<div class="modal fade" id="modalCreate" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Nuevo usuario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="create-error" class="alert alert-danger d-none"></div>
+        <div class="mb-3">
+          <label class="form-label">Username <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="create-username" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-control" id="create-email" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Contraseña <span class="text-danger">*</span></label>
+          <input type="password" class="form-control" id="create-password" autocomplete="new-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Rol</label>
+          <select class="form-select" id="create-role">
+            <option value="operator">operator</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-create-confirm">Crear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar usuario -->
+<div class="modal fade" id="modalEdit" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar usuario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="edit-error" class="alert alert-danger d-none"></div>
+        <input type="hidden" id="edit-user-id">
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-control" id="edit-email" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Rol</label>
+          <select class="form-select" id="edit-role">
+            <option value="operator">operator</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <div class="mb-3 form-check">
+          <input type="checkbox" class="form-check-input" id="edit-is-active">
+          <label class="form-check-label" for="edit-is-active">Cuenta activa</label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Nueva contraseña <span class="text-muted small">(dejar vacío para no cambiar)</span></label>
+          <input type="password" class="form-control" id="edit-password" placeholder="Sin cambios" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-edit-confirm">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminar -->
+<div class="modal fade" id="modalDelete" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Eliminar usuario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="delete-error" class="alert alert-danger d-none"></div>
+        <p>¿Eliminar permanentemente al usuario <strong id="delete-username"></strong>?</p>
+        <p class="text-muted small">Esta acción no se puede deshacer.</p>
+        <input type="hidden" id="delete-user-id">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btn-delete-confirm">Eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CURRENT_USER_ID = {{ user.user_id }};
+
+const modalCreate = new bootstrap.Modal(document.getElementById('modalCreate'));
+const modalEdit   = new bootstrap.Modal(document.getElementById('modalEdit'));
+const modalDelete = new bootstrap.Modal(document.getElementById('modalDelete'));
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function showError(elementId, msg) {
+  const el = document.getElementById(elementId);
+  el.textContent = msg;
+  el.classList.remove('d-none');
+}
+
+function hideError(elementId) {
+  document.getElementById(elementId).classList.add('d-none');
+}
+
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  try {
+    const users = await api.get('/api/v1/users/');
+    if (!users || users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No hay usuarios.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+      const roleBadge = u.role === 'admin'
+        ? '<span class="badge bg-danger">admin</span>'
+        : '<span class="badge bg-secondary">operator</span>';
+      const statusBadge = u.is_active
+        ? '<span class="badge bg-success">Activo</span>'
+        : '<span class="badge bg-danger">Inactivo</span>';
+      const isSelf = u.id === CURRENT_USER_ID;
+
+      const btnDeactivate = isSelf ? '' : `
+        <button class="btn btn-sm ${u.is_active ? 'btn-warning' : 'btn-success'} btn-toggle"
+          data-id="${u.id}" data-active="${u.is_active}" title="${u.is_active ? 'Desactivar' : 'Activar'}">
+          <i class="bi bi-${u.is_active ? 'slash-circle' : 'check-circle'}"></i>
+        </button>`;
+      const btnDelete = isSelf ? '' : `
+        <button class="btn btn-sm btn-danger btn-delete"
+          data-id="${u.id}" data-username="${u.username}" title="Eliminar">
+          <i class="bi bi-trash"></i>
+        </button>`;
+
+      return `<tr>
+        <td><i class="bi bi-person-circle me-1 text-muted"></i>${u.username}${isSelf ? ' <span class="badge bg-info text-dark">tú</span>' : ''}</td>
+        <td>${u.email || '<span class="text-muted">—</span>'}</td>
+        <td>${roleBadge}</td>
+        <td>${statusBadge}</td>
+        <td>${formatDate(u.created_at)}</td>
+        <td>${formatDate(u.last_login)}</td>
+        <td class="text-end">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-primary btn-edit" data-id="${u.id}"
+              data-email="${u.email || ''}" data-role="${u.role}" data-active="${u.is_active}" title="Editar">
+              <i class="bi bi-pencil"></i>
+            </button>
+            ${btnDeactivate}
+            ${btnDelete}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Listeners de fila
+    document.querySelectorAll('.btn-edit').forEach(btn => {
+      btn.addEventListener('click', () => openEdit(btn));
+    });
+    document.querySelectorAll('.btn-toggle').forEach(btn => {
+      btn.addEventListener('click', () => toggleActive(btn));
+    });
+    document.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => openDelete(btn));
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">${e.message}</td></tr>`;
+  }
+}
+
+// --- Crear ---
+document.getElementById('modalCreate').addEventListener('show.bs.modal', () => {
+  hideError('create-error');
+  document.getElementById('create-username').value = '';
+  document.getElementById('create-email').value = '';
+  document.getElementById('create-password').value = '';
+  document.getElementById('create-role').value = 'operator';
+});
+
+document.getElementById('btn-create-confirm').addEventListener('click', async () => {
+  hideError('create-error');
+  const username = document.getElementById('create-username').value.trim();
+  const email    = document.getElementById('create-email').value.trim();
+  const password = document.getElementById('create-password').value;
+  const role     = document.getElementById('create-role').value;
+
+  if (!username || !password) {
+    showError('create-error', 'Usuario y contraseña son obligatorios.');
+    return;
+  }
+  try {
+    await api.post('/api/v1/users/', { username, email: email || null, password, role });
+    modalCreate.hide();
+    loadUsers();
+  } catch (e) {
+    showError('create-error', e.message);
+  }
+});
+
+// --- Editar ---
+function openEdit(btn) {
+  hideError('edit-error');
+  document.getElementById('edit-user-id').value  = btn.dataset.id;
+  document.getElementById('edit-email').value    = btn.dataset.email;
+  document.getElementById('edit-role').value     = btn.dataset.role;
+  document.getElementById('edit-is-active').checked = btn.dataset.active === 'true';
+  document.getElementById('edit-password').value = '';
+  modalEdit.show();
+}
+
+document.getElementById('btn-edit-confirm').addEventListener('click', async () => {
+  hideError('edit-error');
+  const id       = document.getElementById('edit-user-id').value;
+  const email    = document.getElementById('edit-email').value.trim();
+  const role     = document.getElementById('edit-role').value;
+  const isActive = document.getElementById('edit-is-active').checked;
+  const password = document.getElementById('edit-password').value;
+
+  const body = { email: email || null, role, is_active: isActive };
+  if (password) body.password = password;
+
+  try {
+    await api.put(`/api/v1/users/${id}`, body);
+    modalEdit.hide();
+    loadUsers();
+  } catch (e) {
+    showError('edit-error', e.message);
+  }
+});
+
+// --- Toggle activo/inactivo ---
+async function toggleActive(btn) {
+  const id     = btn.dataset.id;
+  const active = btn.dataset.active === 'true';
+  try {
+    if (active) {
+      await api.patch(`/api/v1/users/${id}/deactivate`);
+    } else {
+      await api.put(`/api/v1/users/${id}`, { is_active: true });
+    }
+    loadUsers();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// --- Eliminar ---
+function openDelete(btn) {
+  hideError('delete-error');
+  document.getElementById('delete-user-id').value  = btn.dataset.id;
+  document.getElementById('delete-username').textContent = btn.dataset.username;
+  modalDelete.show();
+}
+
+document.getElementById('btn-delete-confirm').addEventListener('click', async () => {
+  hideError('delete-error');
+  const id = document.getElementById('delete-user-id').value;
+  try {
+    await api.delete(`/api/v1/users/${id}`);
+    modalDelete.hide();
+    loadUsers();
+  } catch (e) {
+    showError('delete-error', e.message);
+  }
+});
+
+// Carga inicial
+loadUsers();
+</script>
+{% endblock %}

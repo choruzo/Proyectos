@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EXOPS — Login</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body class="bg-dark d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+
+<div class="card shadow-lg" style="width: 100%; max-width: 480px;">
+  <div class="card-header bg-primary text-white text-center py-3">
+    <h4 class="mb-0"><i class="bi bi-server me-2"></i>EXOPS — vSphere Admin</h4>
+  </div>
+  <div class="card-body p-4">
+
+    <div id="error-alert" class="alert alert-danger d-none" role="alert">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <span id="error-msg"></span>
+    </div>
+
+    <form id="login-form" novalidate>
+      <h6 class="text-muted mb-3"><i class="bi bi-person-lock me-1"></i>Credenciales de aplicación</h6>
+
+      <div class="mb-3">
+        <label for="app_username" class="form-label">Usuario</label>
+        <input type="text" class="form-control" id="app_username" required autocomplete="username">
+      </div>
+      <div class="mb-4">
+        <label for="app_password" class="form-label">Contraseña</label>
+        <input type="password" class="form-control" id="app_password" required autocomplete="current-password">
+      </div>
+
+      <hr>
+      <h6 class="text-muted mb-3"><i class="bi bi-cloud-lock me-1"></i>Credenciales vCenter</h6>
+
+      <div class="mb-3">
+        <label for="vcenter_host" class="form-label">Host / IP del vCenter</label>
+        <input type="text" class="form-control" id="vcenter_host" placeholder="vcenter.ejemplo.local" required>
+      </div>
+      <div class="mb-3">
+        <label for="vcenter_username" class="form-label">Usuario vCenter</label>
+        <input type="text" class="form-control" id="vcenter_username" placeholder="administrator@vsphere.local" required>
+      </div>
+      <div class="mb-4">
+        <label for="vcenter_password" class="form-label">Contraseña vCenter</label>
+        <input type="password" class="form-control" id="vcenter_password" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-100" id="btn-submit">
+        <span id="btn-text"><i class="bi bi-box-arrow-in-right me-2"></i>Iniciar sesión</span>
+        <span id="btn-spinner" class="d-none">
+          <span class="spinner-border spinner-border-sm me-2"></span>Conectando...
+        </span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const errorAlert = document.getElementById('error-alert');
+    const errorMsg = document.getElementById('error-msg');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+
+    errorAlert.classList.add('d-none');
+    btnText.classList.add('d-none');
+    btnSpinner.classList.remove('d-none');
+
+    const payload = {
+      app_username: document.getElementById('app_username').value.trim(),
+      app_password: document.getElementById('app_password').value,
+      vcenter_host: document.getElementById('vcenter_host').value.trim(),
+      vcenter_username: document.getElementById('vcenter_username').value.trim(),
+      vcenter_password: document.getElementById('vcenter_password').value,
+    };
+
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        const data = await res.json().catch(() => ({}));
+        errorMsg.textContent = data.detail || 'Error al iniciar sesión';
+        errorAlert.classList.remove('d-none');
+      }
+    } catch (err) {
+      errorMsg.textContent = 'Error de red. Verifica la conexión.';
+      errorAlert.classList.remove('d-none');
+    } finally {
+      btnText.classList.remove('d-none');
+      btnSpinner.classList.add('d-none');
+    }
+  });
+</script>
+</body>
+</html>

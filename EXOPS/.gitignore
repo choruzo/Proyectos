@@ -1,0 +1,39 @@
+# Entorno
+.env
+.venv/
+venv/
+
+# Certificados SSL (generados localmente)
+certs/*.pem
+certs/*.key
+certs/*.crt
+
+# Base de datos (generada en tiempo de ejecución)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
