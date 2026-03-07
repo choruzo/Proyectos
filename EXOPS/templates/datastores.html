@@ -2,15 +2,58 @@
 {% block title %}Datastores{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <h2><i class="bi bi-device-hdd me-2"></i>Datastores</h2>
-</div>
-
-<div class="alert alert-info d-flex align-items-center" role="alert">
-  <i class="bi bi-tools fs-4 me-3"></i>
-  <div>
-    <strong>En construcción</strong> — Esta sección mostrará los datastores con capacidad total,
-    espacio libre y VMs asociadas.
+  <div class="d-flex gap-2">
+    <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Buscar datastore..." style="width:200px">
+    <select id="filter-type" class="form-select form-select-sm" style="width:140px">
+      <option value="">Todos los tipos</option>
+      <option value="VMFS">VMFS</option>
+      <option value="NFS">NFS</option>
+      <option value="NFS41">NFS 4.1</option>
+      <option value="vsan">vSAN</option>
+    </select>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-refresh" title="Actualizar">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
   </div>
 </div>
+
+<!-- Spinner -->
+<div id="spinner" class="text-center py-5">
+  <div class="spinner-border text-primary" role="status"></div>
+  <p class="text-muted mt-2">Cargando datastores...</p>
+</div>
+
+<!-- Tabla -->
+<div id="table-container" class="d-none">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Tipo</th>
+        <th>Capacidad</th>
+        <th>Libre</th>
+        <th style="min-width:180px">Uso</th>
+        <th>VMs</th>
+      </tr>
+    </thead>
+    <tbody id="ds-tbody"></tbody>
+  </table>
+  <p id="no-results" class="text-muted text-center py-3 d-none">No hay datastores que coincidan con el filtro.</p>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="action-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-msg"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/datastores.js"></script>
 {% endblock %}
