@@ -76,8 +76,23 @@ Browser (HTML/JS/Bootstrap) → HTTPS → FastAPI → Service Layer → SQLite /
 - Plantillas Jinja2 en `templates/` (SSR para carga inicial).
 - `static/js/api.js` es el cliente centralizado para todas las llamadas `fetch()` a `/api/v1/*`.
 - Cada página tiene su propio JS en `static/js/<página>.js`.
-- Bootstrap 5.3 y Chart.js se cargan desde CDN (no hay build step).
+- Bootstrap 5.3 se carga desde CDN (no hay build step). Chart.js no se usa actualmente.
 - **Modo oscuro/claro**: controlado por `data-bs-theme` en `<html>`. Preferencia persistida en `localStorage('exops-theme')`; valor inicial desde `prefers-color-scheme` del SO. Script anti-flash insertado en `<head>` **antes** de los `<link>` CSS para evitar parpadeo al cargar. No usar clases `bg-light` hardcodeadas en el área de contenido principal — Bootstrap adapta el fondo automáticamente con el tema activo.
+
+#### Páginas implementadas
+
+| Template | JS | Descripción |
+|---|---|---|
+| `dashboard.html` | `dashboard.js` | 4 KPIs en tiempo real: VMs encendidas, hosts conectados, datastore más lleno (con barra adaptativa), espacio libre total. Auto-refresh 30 s sin parpadeo. Datos en paralelo con `Promise.all`. |
+| `vms.html` | `vms.js` | Listado + filtros locales + control de energía con modal de confirmación. |
+| `hosts.html` | `hosts.js` | Listado + filtros locales + modo mantenimiento con modal de confirmación. |
+| `datastores.html` | `datastores.js` | Listado + filtros locales + barras de uso. Ordenados por `used_pct` desc. |
+
+#### Patrones de UI reutilizados
+- **Spinner de carga**: `d-none` toggle sobre el contenedor principal durante la carga inicial.
+- **Modo silencioso** (`silent = true`): el auto-refresh no muestra spinner para evitar parpadeo.
+- **Toast de feedback**: `text-bg-{type}` dinámico (success/danger/info/warning). Delay 4-5 s.
+- **Modal de confirmación**: para acciones destructivas o que afectan VMs activas.
 
 ### Autenticación (flujo crítico)
 
