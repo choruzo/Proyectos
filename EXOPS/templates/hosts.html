@@ -2,15 +2,75 @@
 {% block title %}Hosts ESXi{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <h2><i class="bi bi-hdd-rack me-2"></i>Hosts ESXi</h2>
-</div>
-
-<div class="alert alert-info d-flex align-items-center" role="alert">
-  <i class="bi bi-tools fs-4 me-3"></i>
-  <div>
-    <strong>En construcción</strong> — Esta sección mostrará los hosts ESXi con su estado,
-    métricas de uso y opciones de modo mantenimiento.
+  <div class="d-flex gap-2">
+    <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Buscar host..." style="width:200px">
+    <select id="filter-state" class="form-select form-select-sm" style="width:160px">
+      <option value="">Todos los estados</option>
+      <option value="connected">Conectado</option>
+      <option value="disconnected">Desconectado</option>
+      <option value="maintenance">Mantenimiento</option>
+    </select>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-refresh" title="Actualizar">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
   </div>
 </div>
+
+<!-- Spinner -->
+<div id="spinner" class="text-center py-5">
+  <div class="spinner-border text-primary" role="status"></div>
+  <p class="text-muted mt-2">Cargando hosts...</p>
+</div>
+
+<!-- Tabla -->
+<div id="table-container" class="d-none">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Estado</th>
+        <th style="min-width:160px">CPU</th>
+        <th style="min-width:160px">RAM</th>
+        <th>VMs</th>
+        <th>Versión ESXi</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="host-tbody"></tbody>
+  </table>
+  <p id="no-results" class="text-muted text-center py-3 d-none">No hay hosts que coincidan con el filtro.</p>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="action-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-msg"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal confirmación -->
+<div class="modal fade" id="confirm-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirm-title">Confirmar acción</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="confirm-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-warning" id="confirm-btn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/hosts.js"></script>
 {% endblock %}
