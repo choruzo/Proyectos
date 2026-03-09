@@ -717,11 +717,21 @@ jarvis_complete_20251031_171259/
 │
 ├── 📦 MÓDULOS PRINCIPALES (jarvis_modules/)
 │   ├── config.py                         # Configuración centralizada
-│   ├── command_processor_optimized.py    # Procesador de comandos (1589 líneas)
+│   ├── command_processor_optimized.py    # Router de comandos + cadena NLU (~865 líneas)
 │   ├── llm_ollama.py                     # Integración LLM Ollama
 │   ├── resource_manager.py               # Gestor de caché y memoria
 │   ├── performance_monitor.py            # Monitor de rendimiento
 │   ├── audio_processor.py                # Procesamiento de audio
+│   │
+│   ├── 🧩 HANDLERS DE DOMINIO (handlers/)
+│   │   ├── base_handler.py               # Interfaz BaseCommandHandler + HandleResult
+│   │   ├── system_handler.py             # Shutdown / reboot / update (prioridad 80)
+│   │   ├── smart_home_handler.py         # Home Assistant (prioridad 70)
+│   │   ├── reminder_handler.py           # Recordatorios y tareas (prioridad 60)
+│   │   ├── media_handler.py              # Música y radio (prioridad 50)
+│   │   ├── time_date_handler.py          # Hora y fecha (prioridad 45)
+│   │   ├── misc_handler.py               # Calculadora, Cercanías, Grocy, búsqueda (prioridad 40)
+│   │   └── weather_handler.py            # Meteorología completa AEMET/OpenWeather (prioridad 20)
 │   │
 │   ├── 🎵 MÚSICA
 │   │   └── music_player_optimized.py     # Reproductor de música
@@ -1164,7 +1174,7 @@ logger = get_logger(__name__)
 class MiModulo:
     def __init__(self):
         logger.info("Inicializando MiModulo")
-    
+
     def mi_funcion(self):
         logger.info("Ejecutando función")
         return "resultado"
@@ -1172,11 +1182,52 @@ class MiModulo:
 mi_modulo = MiModulo()
 EOF
 
-# 3. Importar en command_processor_optimized.py
-# from . import mi_modulo
-
-# 4. Crear tests en tests/
+# 3. Crear tests en tests/
 # python3 -m pytest tests/test_mi_modulo.py
+```
+
+### Crear un Nuevo Handler de Dominio
+
+Si el módulo procesa comandos de voz, lo correcto es crear un **handler** en lugar de modificar el router directamente:
+
+```bash
+# 1. Crear handler en jarvis_modules/handlers/
+touch jarvis_modules/handlers/mi_dominio_handler.py
+```
+
+```python
+# Template de handler (jarvis_modules/handlers/mi_dominio_handler.py)
+import re
+from typing import Callable, Optional
+from .base_handler import BaseCommandHandler
+
+_PAT_MI_CMD = re.compile(r'\b(mi_palabra_clave)\b', re.IGNORECASE)
+
+class MiDominioCommandHandler(BaseCommandHandler):
+    def get_domain(self) -> str:
+        return "mi_dominio"
+
+    def get_priority(self) -> int:
+        return 35  # Ajustar según orden deseado
+
+    def can_handle(self, command_text: str) -> bool:
+        return bool(_PAT_MI_CMD.search(command_text))
+
+    def handle(self, command_text, speak_func, context=None):
+        speak_func("Ejecutando mi dominio")
+        return ("handled", None)
+```
+
+```python
+# 2. Registrar en handlers/__init__.py
+from .mi_dominio_handler import MiDominioCommandHandler
+
+# 3. Añadir al _dispatch_chain en command_processor_optimized.py __init__:
+#    self._dispatch_chain = [
+#        ...
+#        (MiDominioCommandHandler(), {}),   # ← añadir aquí con la prioridad correcta
+#        ...
+#    ]
 ```
 
 ### Ejecutar Tests
@@ -1212,14 +1263,15 @@ python3 -i jarvis_main.py
 
 ## 📊 Estadísticas del Proyecto
 
-- 📝 **Líneas de código**: 11,300+ (8,000 core + 3,300 dashboard)
-- 📦 **Módulos**: 20+ (15 core + 5 dashboard)
-- 🧪 **Tests**: 107+ (30 core + 69 dashboard + 8 integration)
+- 📝 **Líneas de código**: 12,000+ (8,500 core + handlers + 3,300 dashboard)
+- 📦 **Módulos**: 28+ (15 core + 8 handlers + 5 dashboard)
+- 🧪 **Tests**: 814+ pasados (222 regresión + 592 otros)
 - 📖 **Documentación**: 50+ páginas
 - 🌍 **Idiomas soportados**: Español
 - 🔌 **Integraciones**: 7+ servicios (AEMET, Home Assistant, Telegram, Ollama, Rasa, Dashboard, Porcupine)
 - 🎵 **Comandos**: 100+ variantes
 - 📊 **Dashboard**: 5 endpoints REST, 4 gráficos, 23 parámetros configurables
+- 🏗️ **Arquitectura**: Handlers modulares por dominio (`jarvis_modules/handlers/`)
 
 ---
 
