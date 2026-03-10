@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +24,12 @@ class Settings(BaseSettings):
     # SSL
     SSL_CERT_PATH: str = "certs/cert.pem"
     SSL_KEY_PATH: str = "certs/key.pem"
+
+    # vCenter cuenta de servicio (colección en background — opcional)
+    VCENTER_SERVICE_HOST: Optional[str] = None
+    VCENTER_SERVICE_USER: Optional[str] = None
+    VCENTER_SERVICE_PASS: Optional[str] = None
+    VCENTER_METRICS_INTERVAL_MINUTES: int = 15
 
 
 settings = Settings()

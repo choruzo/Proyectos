@@ -8,6 +8,7 @@ from loguru import logger
 
 from app.config import settings
 from app.database import init_db
+from app.metrics.collector import collector as metrics_collector
 
 
 @asynccontextmanager
@@ -15,7 +16,15 @@ async def lifespan(app: FastAPI):
     logger.info("Iniciando EXOPS...")
     await init_db()
     logger.info("Base de datos lista.")
+
+    if metrics_collector is not None:
+        metrics_collector.start()
+
     yield
+
+    if metrics_collector is not None:
+        await metrics_collector.stop()
+
     logger.info("EXOPS detenido.")
 
 
