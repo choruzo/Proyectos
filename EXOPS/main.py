@@ -67,6 +67,7 @@ from app.api.v1.vms import router as vms_router
 from app.api.v1.hosts import router as hosts_router
 from app.api.v1.datastores import router as datastores_router
 from app.api.v1.snapshots import router as snapshots_router
+from app.api.v1.metrics import router as metrics_router
 from app.api.v1.users import router as users_router
 from app.pages.router import router as pages_router
 
@@ -76,6 +77,7 @@ app.include_router(vms_router)
 app.include_router(hosts_router)
 app.include_router(datastores_router)
 app.include_router(snapshots_router)
+app.include_router(metrics_router)
 app.include_router(users_router)
 app.include_router(pages_router)
 
