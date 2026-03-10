@@ -62,6 +62,11 @@
           <i class="bi bi-device-hdd me-2"></i>Datastores
         </a>
       </li>
+      <li class="nav-item">
+        <a href="/snapshots" class="nav-link text-white {% if request.url.path == '/snapshots' %}active bg-primary rounded{% endif %}">
+          <i class="bi bi-camera me-2"></i>Snapshots
+        </a>
+      </li>
       <hr class="border-secondary">
       <li class="nav-item">
         <a href="/audit" class="nav-link text-white {% if request.url.path == '/audit' %}active bg-primary rounded{% endif %}">

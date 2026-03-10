@@ -2,15 +2,126 @@
 {% block title %}Auditoría{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <h2><i class="bi bi-journal-text me-2"></i>Registro de Auditoría</h2>
 </div>
 
-<div class="alert alert-info d-flex align-items-center" role="alert">
-  <i class="bi bi-tools fs-4 me-3"></i>
-  <div>
-    <strong>En construcción</strong> — Esta sección mostrará el historial completo de acciones
-    realizadas sobre el vCenter con filtros por usuario, acción y fecha.
+<!-- Filtros -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      {% if user and user.role == "admin" %}
+      <div>
+        <label for="filter-user" class="form-label form-label-sm mb-1">Usuario</label>
+        <input type="text" id="filter-user" class="form-control form-control-sm" placeholder="Todos" style="width:150px">
+      </div>
+      {% endif %}
+      <div>
+        <label for="filter-action" class="form-label form-label-sm mb-1">Acción</label>
+        <select id="filter-action" class="form-select form-select-sm" style="width:200px">
+          <option value="">Todas</option>
+          <option value="login">Login</option>
+          <option value="logout">Logout</option>
+          <option value="vm_power_on">VM — Encender</option>
+          <option value="vm_power_off">VM — Apagar</option>
+          <option value="vm_power_reboot">VM — Reiniciar</option>
+          <option value="host_maintenance_enter">Host — Entrar mantenimiento</option>
+          <option value="host_maintenance_exit">Host — Salir mantenimiento</option>
+          <option value="snapshot_create">Snapshot — Crear</option>
+          <option value="snapshot_restore">Snapshot — Restaurar</option>
+          <option value="snapshot_delete">Snapshot — Eliminar</option>
+          <option value="user_create">Usuario — Crear</option>
+          <option value="user_update">Usuario — Actualizar</option>
+          <option value="user_deactivate">Usuario — Desactivar</option>
+          <option value="user_delete">Usuario — Eliminar</option>
+        </select>
+      </div>
+      <div>
+        <label for="filter-from" class="form-label form-label-sm mb-1">Desde</label>
+        <input type="date" id="filter-from" class="form-control form-control-sm">
+      </div>
+      <div>
+        <label for="filter-to" class="form-label form-label-sm mb-1">Hasta</label>
+        <input type="date" id="filter-to" class="form-control form-control-sm">
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-primary" id="btn-search">
+          <i class="bi bi-search me-1"></i>Buscar
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" id="btn-clear">
+          <i class="bi bi-x-lg me-1"></i>Limpiar
+        </button>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Spinner -->
+<div id="spinner" class="text-center py-5">
+  <div class="spinner-border text-primary" role="status"></div>
+  <p class="text-muted mt-2">Cargando registros...</p>
+</div>
+
+<!-- Tabla -->
+<div id="table-container" class="d-none">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Fecha/Hora</th>
+        <th>Usuario</th>
+        <th>Acción</th>
+        <th>Recurso</th>
+        <th>Resultado</th>
+        <th>IP</th>
+      </tr>
+    </thead>
+    <tbody id="audit-tbody"></tbody>
+  </table>
+  <p id="no-results" class="text-muted text-center py-3 d-none">No hay registros que coincidan.</p>
+
+  <!-- Paginación -->
+  <div class="d-flex justify-content-between align-items-center mt-2 mb-3">
+    <button class="btn btn-sm btn-outline-secondary" id="btn-prev" disabled>
+      <i class="bi bi-chevron-left me-1"></i>Anterior
+    </button>
+    <span class="text-muted small" id="page-label">Página 1</span>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-next">
+      Siguiente<i class="bi bi-chevron-right ms-1"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="action-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-msg"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal detalle -->
+<div class="modal fade" id="detail-modal" tabindex="-1" aria-labelledby="detail-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detail-modal-label">
+          <i class="bi bi-journal-text me-2"></i>Detalle del registro
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0" id="detail-fields"></dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/audit.js"></script>
 {% endblock %}

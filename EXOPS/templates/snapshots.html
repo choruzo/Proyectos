@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Snapshots{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2><i class="bi bi-camera me-2"></i>Snapshots</h2>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <select id="vm-select" class="form-select form-select-sm" style="width:220px">
+      <option value="">Selecciona una VM...</option>
+    </select>
+    <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Buscar snapshot..." style="width:180px" disabled>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-refresh" title="Actualizar" disabled>
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
+    <button class="btn btn-sm btn-primary" id="btn-new-snapshot" disabled>
+      <i class="bi bi-plus-lg me-1"></i>Nuevo Snapshot
+    </button>
+  </div>
+</div>
+
+<!-- Spinner -->
+<div id="spinner" class="text-center py-5 d-none">
+  <div class="spinner-border text-primary" role="status"></div>
+  <p class="text-muted mt-2">Cargando snapshots...</p>
+</div>
+
+<!-- Tabla -->
+<div id="table-container" class="d-none">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>VM</th>
+        <th>Snapshot</th>
+        <th>Descripción</th>
+        <th>Fecha</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="snap-tbody"></tbody>
+  </table>
+  <p id="no-results" class="text-muted text-center py-3 d-none">Esta VM no tiene snapshots.</p>
+  <p id="no-filter-results" class="text-muted text-center py-3 d-none">No hay snapshots que coincidan con la búsqueda.</p>
+</div>
+
+<!-- Placeholder inicial -->
+<div id="placeholder" class="text-center py-5 text-muted">
+  <i class="bi bi-camera fs-1 d-block mb-2"></i>
+  Selecciona una VM para ver sus snapshots.
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="action-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-msg"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Crear Snapshot -->
+<div class="modal fade" id="create-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-camera me-2"></i>Crear Snapshot</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="snap-name" class="form-label fw-semibold">Nombre <span class="text-danger">*</span></label>
+          <input type="text" id="snap-name" class="form-control" placeholder="Ej: antes-actualizacion" maxlength="80">
+        </div>
+        <div class="mb-3">
+          <label for="snap-desc" class="form-label fw-semibold">Descripción</label>
+          <textarea id="snap-desc" class="form-control" rows="2" placeholder="Opcional..." maxlength="255"></textarea>
+        </div>
+        <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i>No se incluirá memoria RAM ni se realizará quiesce.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="create-confirm-btn">
+          <i class="bi bi-camera me-1"></i>Crear
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar Restaurar -->
+<div class="modal fade" id="restore-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-bg-warning">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Confirmar restauración</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="restore-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-warning" id="restore-confirm-btn">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar Eliminar -->
+<div class="modal fade" id="delete-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirmar eliminación</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="delete-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm-btn">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/snapshots.js"></script>
+{% endblock %}

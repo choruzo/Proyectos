@@ -72,6 +72,14 @@ async def datastores_page(request: Request, access_token: Optional[str] = Cookie
     )
 
 
+@router.get("/snapshots", response_class=HTMLResponse)
+async def snapshots_page(request: Request, access_token: Optional[str] = Cookie(default=None)):
+    token_data = _get_user_from_cookie(access_token)
+    if not token_data:
+        return RedirectResponse(url="/login")
+    return templates.TemplateResponse("snapshots.html", {"request": request, "user": token_data})
+
+
 @router.get("/audit", response_class=HTMLResponse)
 async def audit_page(request: Request, access_token: Optional[str] = Cookie(default=None)):
     token_data = _get_user_from_cookie(access_token)
