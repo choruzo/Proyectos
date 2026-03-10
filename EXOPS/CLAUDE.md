@@ -12,7 +12,8 @@ Diseñada para equipos pequeños (2-5 admins) con autenticación propia + creden
 
 ### Instalación
 ```bash
-python -m venv venv && source venv/bin/activate
+python -m venv .venv && source .venv/Scripts/activate  # Windows
+# python -m venv .venv && source .venv/bin/activate    # Linux/macOS
 pip install -r requirements.txt
 cp .env.example .env  # Editar con valores reales
 ```
@@ -49,6 +50,7 @@ pytest
 pytest tests/test_auth.py          # Módulo específico
 pytest -k "test_login"             # Test específico por nombre
 pytest --asyncio-mode=auto         # Tests async
+pytest tests/test_collector.py     # Tests del colector de métricas
 ```
 
 ## Arquitectura
@@ -69,6 +71,8 @@ Browser (HTML/JS/Bootstrap) → HTTPS → FastAPI → Service Layer → SQLite /
 - **`app/vcenter/connection.py`**: Pool de sesiones pyVmomi en memoria (`dict[user_id → ServiceInstance]`). Cada usuario tiene su propia conexión vCenter. Las credenciales vCenter **nunca se persisten**.
 - **`app/vcenter/vms.py|hosts.py|datastores.py|snapshots.py`**: Servicios que usan pyVmomi para operar sobre vSphere. Reciben la `ServiceInstance` del pool.
 - **`app/audit/service.py`**: Inserta entradas en `audit_logs`. Debe llamarse desde cada endpoint que realice una acción sobre vCenter.
+- **`app/metrics/service.py`**: Caché JSON de snapshots históricos (`data/metrics_cache.json`). Máximo 7 días, mínimo 5 min entre snapshots. Protegido con `asyncio.Lock`.
+- **`app/metrics/collector.py`**: `ServiceAccountCollector` — `asyncio.Task` de larga duración que conecta al vCenter con cuenta de servicio propia y llama `save_snapshot` periódicamente. Singleton `collector` al nivel del módulo; vale `None` si las vars de entorno no están configuradas.
 - **`app/api/v1/`**: Routers FastAPI que unen endpoints → servicios → respuesta JSON.
 
 ### Frontend
@@ -109,14 +113,24 @@ Browser (HTML/JS/Bootstrap) → HTTPS → FastAPI → Service Layer → SQLite /
 - **Sin build step en frontend**: Todo el JS es ES6+ vanilla con `fetch`. No hay `package.json`, `webpack` ni transpilación.
 - **Un solo archivo SQLite**: La DB vive en `data/exops.db`. Las migraciones se gestionan con `Base.metadata.create_all()` en el arranque (adecuado para la escala actual).
 - **Roles solo en la app**: La autorización a nivel de vCenter la gestiona el propio vCenter según las credenciales del usuario. La app no replica esos permisos.
+- **Colector en background completamente opcional**: El singleton `collector` vale `None` si `VCENTER_SERVICE_HOST/USER/PASS` no están en `.env`. El lifespan de `main.py` lo comprueba antes de llamar `start()`/`stop()`. Sin estas vars, el comportamiento es idéntico al anterior.
+- **ServiceInstance del colector independiente del pool de usuarios**: El colector mantiene su propia conexión; nunca interfiere con las sesiones de usuario ni con el pool de `connection.py`.
 
-## Variables de entorno requeridas (`.env`)
+## Variables de entorno (`.env`)
 
 ```
+# Requeridas
 JWT_SECRET_KEY=    # Secreto largo y aleatorio
 JWT_EXPIRE_MINUTES=60
 APP_ENV=production
 DATABASE_URL=sqlite+aiosqlite:///./data/exops.db
 SSL_CERT_PATH=certs/cert.pem
 SSL_KEY_PATH=certs/key.pem
+
+# Opcionales — colector de métricas en background
+# Si no se configuran, el dashboard solo guarda snapshots cuando un usuario visita la página.
+# VCENTER_SERVICE_HOST=vcenter.example.com
+# VCENTER_SERVICE_USER=svc-exops@vsphere.local
+# VCENTER_SERVICE_PASS=contraseña-segura
+VCENTER_METRICS_INTERVAL_MINUTES=15
 ```
