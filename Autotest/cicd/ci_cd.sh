@@ -87,6 +87,34 @@ init_database() {
     fi
 }
 
+reset_database() {
+    log_warn "¡ATENCIÓN! Esta operación eliminará todos los datos de la base de datos."
+
+    # Pedir confirmación si hay terminal interactiva
+    if [[ -t 0 ]]; then
+        read -r -p "¿Seguro que deseas resetear la base de datos? [s/N]: " confirm
+        if [[ ! "$confirm" =~ ^[sS]$ ]]; then
+            log_info "Operación cancelada."
+            return 0
+        fi
+    fi
+
+    # Hacer backup si la BD ya existe
+    if [[ -f "$DB_PATH" ]]; then
+        local backup_path
+        backup_path="${DB_PATH%.db}_backup_$(date +%Y%m%d_%H%M%S).db"
+        cp "$DB_PATH" "$backup_path"
+        log_info "Backup guardado en: $backup_path"
+
+        rm -f "$DB_PATH"
+        log_ok "Base de datos eliminada: $DB_PATH"
+    else
+        log_info "La base de datos no existía aún."
+    fi
+
+    init_database
+}
+
 verify_environment() {
     log_info "Verificando entorno..."
     
@@ -392,7 +420,7 @@ run_pipeline() {
     log_info "Directorio de trabajo: $compile_path"
     log_info "Configuración: sonar-project.properties"
     
-    if ! $JAVA_HOME/bin/java -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name=Javi_pipeline -Dsonar.projectVersion=V00.00.01 \
+    if ! $JAVA_HOME/bin/java -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name=V08_00_00_00 -Dsonar.projectVersion=V08_00_00_00 \
         2>&1 | tee -a "$LOG_FILE"; then
         log_error "sonar-scanner falló"
         cleanup_on_error "Error en análisis SonarQube" "sonarqube"
@@ -404,8 +432,13 @@ run_pipeline() {
     # PASO 4: Verificar resultados via API
     log_info "Verificando resultados en SonarQube..."
     
+    # Pasar el report-task.txt para que sonar_check.py espere a que
+    # SonarQube termine de procesar el análisis antes de consultar el
+    # quality gate (SonarQube procesa de forma asíncrona).
+    local report_task_file="$compile_path/.scannerwork/report-task.txt"
+    
     local sonar_result=0
-    python3 "$SCRIPT_DIR/python/sonar_check.py" "$CONFIG_FILE" "$tag" || sonar_result=$?
+    python3 "$SCRIPT_DIR/python/sonar_check.py" "$CONFIG_FILE" "$tag" "$report_task_file" || sonar_result=$?
     
     if [[ $sonar_result -ne 0 ]]; then
         log_warn "Quality Gate no superado"
@@ -429,7 +462,7 @@ run_pipeline() {
     # FASE 4: Despliegue en vCenter + VM
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[4/5] DESPLIEGUE"
+    log_info "[4/6] DESPLIEGUE"
     log_info "───────────────────────────────────────────────────────────"
     
     db_query "UPDATE deployments SET status='deploying' WHERE id=$deployment_id"
@@ -500,12 +533,49 @@ run_pipeline() {
     fi
     
     log_ok "Despliegue completado"
-    
+
     #---------------------------------------------------------------------------
-    # FASE 5: Finalización y notificaciones
+    # FASE 5: Generación de checksums
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[5/5] FINALIZACIÓN"
+    log_info "[5/6] GENERACIÓN DE CHECKSUMS"
+    log_info "───────────────────────────────────────────────────────────"
+
+    log_info "Generando checksums en: $compile_path"
+
+    (
+        cd "$compile_path" || {
+            log_error "No se puede acceder a: $compile_path"
+            exit 1
+        }
+
+        log_info "Calculando checksums completos (contents_RPM_Completos.txt)..."
+        find . -type f -exec sha256sum {} \; > contents_RPM_Completos.txt
+        log_ok "contents_RPM_Completos.txt generado"
+
+        log_info "Calculando checksums de esquemas XSD (contents_schemas.txt)..."
+        find . -type f -name "*.xsd" -exec sha256sum {} \; >> contents_schemas.txt
+        log_ok "contents_schemas.txt generado"
+
+        log_info "Calculando checksums de scripts .sh (contents_scripts.txt)..."
+        find . -type f -name "*.sh" -exec sha256sum {} \; >> contents_scripts.txt
+        log_ok "contents_scripts.txt generado"
+
+        log_info "Calculando checksums de scripts .pl (contents_scripts2.txt)..."
+        find . -type f -name "*.pl" -exec sha256sum {} \; >> contents_scripts2.txt
+        log_ok "contents_scripts2.txt generado"
+    ) || {
+        cleanup_on_error "Error generando checksums en $compile_path" "checksums"
+        return 1
+    }
+
+    log_ok "Checksums generados correctamente en $compile_path"
+
+    #---------------------------------------------------------------------------
+    # FASE 6: Finalización y notificaciones
+    #---------------------------------------------------------------------------
+    log_info ""
+    log_info "[6/6] FINALIZACIÓN"
     log_info "───────────────────────────────────────────────────────────"
     
     local end_time
@@ -721,6 +791,7 @@ Comandos:
   status              Ver estado del pipeline
   logs [N]            Ver últimas N líneas de log (default: 50)
   init                Inicializar base de datos
+  reset               Eliminar y recrear la base de datos (hace backup previo)
   verify              Verificar entorno y configuración
   help                Mostrar esta ayuda
 
@@ -765,6 +836,9 @@ main() {
             ;;
         init)
             init_database
+            ;;
+        reset)
+            reset_database
             ;;
         verify)
             verify_environment

@@ -62,6 +62,8 @@
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search</label>
                             <input x-model="searchQuery" 
                                    @keyup.enter="viewLogContent()"
+                                   :disabled="liveMode"
+                                   :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
                                    type="text" 
                                    placeholder="Filter log lines..."
                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
@@ -70,6 +72,8 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lines</label>
                             <select x-model="maxLines" 
+                                    :disabled="liveMode"
+                                    :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
                                     class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
                                 <option value="100">Last 100</option>
                                 <option value="500">Last 500</option>
@@ -80,11 +84,31 @@
                         
                         <div class="flex gap-2 items-end">
                             <button @click="viewLogContent()" 
+                                    :disabled="liveMode"
+                                    :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
                                     class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                                 <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                                 </svg>
                                 Refresh
+                            </button>
+                            <button @click="toggleLiveTail()"
+                                    :disabled="!selectedFile"
+                                    :class="liveMode ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500' : 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'"
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <template x-if="liveMode">
+                                    <span class="relative flex h-3 w-3 mr-2">
+                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-300 opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+                                    </span>
+                                </template>
+                                <template x-if="!liveMode">
+                                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.957 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.957-9.542-7z"/>
+                                    </svg>
+                                </template>
+                                <span x-text="liveMode ? 'Live' : 'Live Tail'"></span>
                             </button>
                         </div>
                     </div>
@@ -104,12 +128,45 @@
                 </div>
                 
                 <div x-show="selectedFile && logContent" class="p-4">
-                    <div class="mb-2 text-sm text-gray-600 dark:text-gray-400">
-                        Showing <span class="font-medium" x-text="logInfo.displayed_lines"></span> of 
-                        <span class="font-medium" x-text="logInfo.total_lines"></span> lines
+                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                            Showing <span class="font-medium" x-text="logInfo.displayed_lines"></span> of 
+                            <span class="font-medium" x-text="logInfo.total_lines"></span> lines
+                            <span x-show="liveMode"
+                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                <span class="relative flex h-2 w-2">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                </span>
+                                LIVE
+                            </span>
+                        </div>
+                        <!-- Color legend -->
+                        <div class="flex flex-wrap gap-3 text-xs">
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block w-2 h-2 rounded-full" style="background:#f87171"></span>
+                                <span class="text-gray-500 dark:text-gray-400">ERROR</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block w-2 h-2 rounded-full" style="background:#facc15"></span>
+                                <span class="text-gray-500 dark:text-gray-400">WARN</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block w-2 h-2 rounded-full" style="background:#4ade80"></span>
+                                <span class="text-gray-500 dark:text-gray-400">OK</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block w-2 h-2 rounded-full" style="background:#60a5fa"></span>
+                                <span class="text-gray-500 dark:text-gray-400">INFO</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
+                                <span class="text-gray-500 dark:text-gray-400">DEBUG</span>
+                            </span>
+                        </div>
                     </div>
                     <div class="bg-gray-900 rounded-lg overflow-hidden">
-                        <pre class="p-4 text-xs text-green-400 font-mono overflow-x-auto max-h-[calc(100vh-450px)] overflow-y-auto"><code x-text="logContent"></code></pre>
+                        <pre x-ref="logContainer" class="p-4 text-xs font-mono overflow-x-auto max-h-[calc(100vh-450px)] overflow-y-auto"><code x-html="colorizeLog(logContent)"></code></pre>
                     </div>
                 </div>
             </div>
@@ -128,9 +185,18 @@ function logsData() {
         logInfo: {},
         searchQuery: '',
         maxLines: 500,
+        liveMode: false,
+        liveTailTimer: null,
+        lastTotalLines: 0,
         
         async init() {
             await this.loadLogFiles();
+            window.pageRefreshCallback = async () => {
+                await this.loadLogFiles();
+                if (this.selectedFile && !this.liveMode) {
+                    await this.viewLogContent();
+                }
+            };
         },
         
         async loadLogFiles() {
@@ -143,9 +209,11 @@ function logsData() {
         },
         
         async selectLogFile(filename) {
+            this.stopLiveTail();
             this.selectedFile = filename;
             this.logContent = null;
             this.searchQuery = '';
+            this.lastTotalLines = 0;
             await this.viewLogContent();
         },
         
@@ -162,6 +230,7 @@ function logsData() {
                 const data = await response.json();
                 
                 this.logContent = data.content;
+                this.lastTotalLines = data.file_total_lines || data.total_lines;
                 this.logInfo = {
                     total_lines: data.total_lines,
                     displayed_lines: data.displayed_lines
@@ -170,6 +239,89 @@ function logsData() {
                 console.error('Error loading log content:', error);
                 this.logContent = 'Error loading log file: ' + error.message;
             }
+        },
+
+        toggleLiveTail() {
+            if (this.liveMode) {
+                this.stopLiveTail();
+            } else {
+                this.startLiveTail();
+            }
+        },
+
+        startLiveTail() {
+            if (!this.selectedFile) return;
+            this.liveMode = true;
+            this.liveTailPoll();
+            this.liveTailTimer = setInterval(() => { this.liveTailPoll(); }, 2000);
+        },
+
+        stopLiveTail() {
+            this.liveMode = false;
+            if (this.liveTailTimer) {
+                clearInterval(this.liveTailTimer);
+                this.liveTailTimer = null;
+            }
+        },
+
+        async liveTailPoll() {
+            if (!this.selectedFile || !this.liveMode || this.logContent === null) return;
+            try {
+                const params = new URLSearchParams({ start_line: this.lastTotalLines });
+                const response = await fetch(`/api/logs/view/${this.selectedFile}?${params}`);
+                const data = await response.json();
+
+                if (data.file_total_lines < this.lastTotalLines) {
+                    // File was rotated/truncated — reload fully
+                    this.stopLiveTail();
+                    await this.viewLogContent();
+                    return;
+                }
+
+                if (data.file_total_lines > this.lastTotalLines && data.content) {
+                    this.logContent = this.logContent + data.content;
+                    this.lastTotalLines = data.file_total_lines;
+                    this.logInfo.total_lines = data.file_total_lines;
+                    this.logInfo.displayed_lines = (this.logInfo.displayed_lines || 0) + data.displayed_lines;
+                    await this.$nextTick();
+                    this.scrollToBottom();
+                }
+            } catch (error) {
+                console.error('Live-tail error:', error);
+            }
+        },
+
+        scrollToBottom() {
+            const el = this.$refs.logContainer;
+            if (el) el.scrollTop = el.scrollHeight;
+        },
+
+        colorizeLog(content) {
+            if (!content) return '';
+
+            function escapeHtml(text) {
+                return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function getLineClass(line) {
+                if (/\[ERROR\]|\bERROR:\s/.test(line)) return 'log-error';
+                if (/\[WARN\]|\[WARNING\]|\bWARN:\s|\bWARNING:\s/.test(line)) return 'log-warn';
+                if (/\[OK\]|\bSUCCESS\b/.test(line)) return 'log-ok';
+                if (/\[INFO\]|\bINFO:\s/.test(line)) return 'log-info';
+                if (/\[DEBUG\]|\bDEBUG:\s/.test(line)) return 'log-debug';
+                return 'log-default';
+            }
+
+            return content.split('\n')
+                .map(function(line) {
+                    return '<span class="' + getLineClass(line) + '">' + escapeHtml(line) + '</span>';
+                })
+                .join('\n');
         }
     }
 }

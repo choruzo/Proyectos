@@ -6,7 +6,6 @@ After=network.target
 [Service]
 Type=simple
 User=agent
-Group=agent
 WorkingDirectory=/home/agent/cicd/web
 Environment="PATH=/usr/bin:/usr/local/bin"
 Environment="FLASK_APP=app.py"

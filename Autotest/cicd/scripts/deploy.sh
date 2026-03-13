@@ -271,8 +271,16 @@ run_installation() {
     end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
+    # SSH devuelve código 255 cuando la conexión es cerrada por el host remoto.
+    # Esto ocurre cuando install.sh termina con 'reboot', que es el comportamiento
+    # esperado y normal de la instalación.
+    # Se detecta la instalación exitosa buscando el marcador de éxito en el log.
     if [[ $exit_code -eq 0 ]]; then
         log_ok "Instalación completada exitosamente ($(format_duration $duration))"
+        return 0
+    elif [[ $exit_code -eq 255 ]] && grep -q "INSTALLATION COMPLETED" "$DEPLOY_LOG_FILE" 2>/dev/null; then
+        log_ok "Instalación completada exitosamente - VM reiniciando ($(format_duration $duration))"
+        log_info "SSH cerró la conexión con código 255: la VM se reinició al finalizar la instalación (comportamiento normal)"
         return 0
     else
         log_error "Instalación falló con código: $exit_code"

@@ -35,11 +35,18 @@ CREATE TABLE IF NOT EXISTS sonar_results (
     deployment_id INTEGER REFERENCES deployments(id),
     tag TEXT NOT NULL,
     timestamp TEXT,
+    -- Métricas Overall Code (todo el código)
     coverage REAL,
     bugs INTEGER,
     vulnerabilities INTEGER,
     code_smells INTEGER,
     security_hotspots INTEGER,
+    -- Métricas New Code (solo código nuevo - lo que evalúa el Quality Gate)
+    new_coverage REAL,
+    new_bugs INTEGER,
+    new_vulnerabilities INTEGER,
+    new_code_smells INTEGER,
+    new_security_hotspots INTEGER,
     passed INTEGER CHECK(passed IN (0, 1)),
     quality_gate_status TEXT,    -- 'OK', 'WARN', 'ERROR'
     created_at TEXT DEFAULT (datetime('now'))
@@ -71,6 +78,20 @@ CREATE INDEX IF NOT EXISTS idx_deployments_tag ON deployments(tag_name);
 CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
 CREATE INDEX IF NOT EXISTS idx_deployments_started ON deployments(started_at);
 CREATE INDEX IF NOT EXISTS idx_sonar_tag ON sonar_results(tag);
+
+-- =============================================================================
+-- Usuarios de la Web UI (autenticacion)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS web_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    last_login TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_users_username ON web_users(username);
 CREATE INDEX IF NOT EXISTS idx_build_logs_tag ON build_logs(tag);
 CREATE INDEX IF NOT EXISTS idx_execution_log_deployment ON execution_log(deployment_id);
 CREATE INDEX IF NOT EXISTS idx_processed_tags_name ON processed_tags(tag_name);

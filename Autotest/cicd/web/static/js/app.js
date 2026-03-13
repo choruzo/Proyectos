@@ -31,15 +31,27 @@ function showToast(message, type = 'info') {
     
     const toast = document.createElement('div');
     toast.className = `${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 transform transition-all duration-300 ease-in-out`;
-    toast.innerHTML = `
-        ${icons[type]}
-        <span class="flex-1">${message}</span>
-        <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
-            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+
+    // Icon (trusted static SVG markup, not user-controlled)
+    const iconWrapper = document.createElement('div');
+    iconWrapper.innerHTML = icons[type];
+    toast.appendChild(iconWrapper.firstElementChild);
+
+    // Message: use textContent to prevent XSS injection
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'flex-1';
+    msgSpan.textContent = message;
+    toast.appendChild(msgSpan);
+
+    // Close button (static markup, not influenced by user data)
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'text-white hover:text-gray-200';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.innerHTML = `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-            </svg>
-        </button>
-    `;
+            </svg>`;
+    closeBtn.addEventListener('click', function() { toast.remove(); });
+    toast.appendChild(closeBtn);
     
     container.appendChild(toast);
     

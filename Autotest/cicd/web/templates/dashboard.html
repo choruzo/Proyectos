@@ -130,10 +130,23 @@
             <div class="space-y-4">
                 <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                     <div class="flex items-center">
-                        <div class="h-3 w-3 rounded-full bg-green-400 mr-3 animate-pulse"></div>
+                        <div class="h-3 w-3 rounded-full mr-3"
+                             :class="{
+                                 'bg-green-400 animate-pulse': pipelineStatus.running,
+                                 'bg-red-400': !pipelineStatus.running && pipelineStatus.status === 'failed',
+                                 'bg-yellow-400': !pipelineStatus.running && pipelineStatus.status === 'inactive',
+                                 'bg-gray-400 animate-pulse': pipelineStatus.status === 'unknown' || pipelineStatusLoading
+                             }"></div>
                         <span class="text-gray-700 dark:text-gray-300 font-medium">Pipeline Status</span>
                     </div>
-                    <span class="text-green-600 dark:text-green-400 font-semibold">Active</span>
+                    <span class="font-semibold"
+                          :class="{
+                              'text-green-600 dark:text-green-400': pipelineStatus.running,
+                              'text-red-600 dark:text-red-400': !pipelineStatus.running && pipelineStatus.status === 'failed',
+                              'text-yellow-600 dark:text-yellow-400': !pipelineStatus.running && pipelineStatus.status === 'inactive',
+                              'text-gray-500 dark:text-gray-400': pipelineStatus.status === 'unknown' || pipelineStatusLoading
+                          }"
+                          x-text="pipelineStatusLoading ? 'Checking...' : (pipelineStatus.status || 'unknown')"></span>
                 </div>
                 
                 <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -161,10 +174,13 @@
     
     <!-- Recent Deployments Table -->
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                 Recent Deployments
             </h3>
+            <a href="/pipeline-runs" class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium">
+                Ver todo &rarr;
+            </a>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -220,12 +236,35 @@ function dashboardData() {
         stats: {},
         recentDeployments: [],
         chart: null,
+        pipelineStatus: { status: 'unknown', running: false },
+        pipelineStatusLoading: true,
         
         async init() {
             await this.loadStats();
             await this.loadRecentDeployments();
             await this.loadChartData();
+            await this.loadPipelineStatus();
+            window.pageRefreshCallback = async () => {
+                await this.loadStats();
+                await this.loadRecentDeployments();
+                await this.loadChartData();
+                await this.loadPipelineStatus();
+            };
         },
+
+        async loadPipelineStatus() {
+            this.pipelineStatusLoading = true;
+            try {
+                const response = await fetch('/api/pipeline/status');
+                this.pipelineStatus = await response.json();
+            } catch (error) {
+                this.pipelineStatus = { status: 'unknown', running: false };
+                console.error('Error loading pipeline status:', error);
+            } finally {
+                this.pipelineStatusLoading = false;
+            }
+        },
+        
         
         async loadStats() {
             try {
@@ -251,6 +290,9 @@ function dashboardData() {
                 const data = await response.json();
                 
                 const ctx = document.getElementById('deploymentsChart').getContext('2d');
+                if (this.chart) {
+                    this.chart.destroy();
+                }
                 this.chart = new Chart(ctx, {
                     type: 'bar',
                     data: data,

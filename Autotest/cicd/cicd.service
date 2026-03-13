@@ -7,7 +7,6 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=agent
-Group=agent
 WorkingDirectory=/home/agent/cicd
 
 # Comando principal

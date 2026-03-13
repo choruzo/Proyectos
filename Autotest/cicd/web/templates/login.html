@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full"
+      x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }"
+      :class="{ 'dark': darkMode }"
+      x-init="$watch('darkMode', val => localStorage.setItem('darkMode', String(val)))">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión — GALTTCMC CI/CD</title>
+
+    <!-- Tailwind CSS (local) -->
+    <script src="{{ url_for('static', filename='js/tailwind.min.js') }}"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+
+    <!-- Alpine.js (local) -->
+    <script defer src="{{ url_for('static', filename='js/alpine.min.js') }}"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚀</text></svg>">
+
+    <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900 flex items-center justify-center min-h-screen">
+
+    <!-- Dark mode toggle (top-right) -->
+    <div class="absolute top-4 right-4">
+        <button @click="darkMode = !darkMode"
+                class="text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                title="Cambiar tema">
+            <svg x-show="!darkMode" class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            </svg>
+            <svg x-show="darkMode" class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="w-full max-w-sm px-4">
+
+        <!-- Logo + Title -->
+        <div class="text-center mb-8">
+            <span class="text-5xl">🚀</span>
+            <h1 class="mt-3 text-2xl font-bold text-gray-900 dark:text-white">GALTTCMC CI/CD</h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pipeline Monitor</p>
+        </div>
+
+        <!-- Login card -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg px-8 py-8">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-6">Iniciar sesión</h2>
+
+            <!-- Error message -->
+            {% if error %}
+            <div class="mb-5 px-4 py-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-start space-x-2">
+                <svg class="h-5 w-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p class="text-sm text-red-700 dark:text-red-400">{{ error }}</p>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') | urlencode }}{% endif %}">
+                <!-- CSRF token -->
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <!-- Username -->
+                <div class="mb-4">
+                    <label for="username"
+                           class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Usuario
+                    </label>
+                    <input type="text" id="username" name="username"
+                           required autocomplete="username" autofocus
+                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                  focus:border-transparent transition-colors">
+                </div>
+
+                <!-- Password -->
+                <div class="mb-6">
+                    <label for="password"
+                           class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Contraseña
+                    </label>
+                    <input type="password" id="password" name="password"
+                           required autocomplete="current-password"
+                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                  focus:border-transparent transition-colors">
+                </div>
+
+                <!-- Submit -->
+                <button type="submit"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white
+                               font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none
+                               focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
+                               dark:focus:ring-offset-gray-800">
+                    Entrar
+                </button>
+            </form>
+        </div>
+
+        <p class="mt-4 text-center text-xs text-gray-400 dark:text-gray-500">
+            SUSE Linux 15 &middot; 172.30.188.137
+        </p>
+    </div>
+
+</body>
+</html>

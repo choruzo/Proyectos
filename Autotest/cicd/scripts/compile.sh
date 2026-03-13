@@ -130,6 +130,10 @@ run_compilation() {
     
     # Asegurar permisos de ejecución
     chmod +x "$full_build_path"
+
+    # Comentar líneas con 'read' en el script de build para evitar pausas interactivas
+    log_info "Desactivando comandos 'read' en: $full_build_path"
+    sed -i 's/^\([[:space:]]*read\b\)/#\1/' "$full_build_path"
     
     # Cambiar al directorio de compilación
     cd "$compile_dir" || {

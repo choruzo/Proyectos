@@ -10,8 +10,12 @@ import os
 import sys
 import sqlite3
 import json
+import subprocess
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, session, redirect, url_for
+import secrets
+import hmac
+from werkzeug.security import check_password_hash, generate_password_hash
 import yaml
 
 # Añadir path del proyecto para imports
@@ -44,6 +48,34 @@ def get_db_connection():
     return conn
 
 
+# ==================== AUTH ====================
+
+def generate_csrf_token():
+    """Genera o recupera el CSRF token de la sesion actual."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+
+@app.context_processor
+def inject_csrf_token():
+    """Inyecta csrf_token en todos los templates."""
+    return {'csrf_token': generate_csrf_token()}
+
+
+@app.before_request
+def require_login():
+    """Verifica autenticacion en todas las rutas excepto /login y archivos estaticos."""
+    public_endpoints = {'login', 'logout', 'static'}
+    if request.endpoint in public_endpoints:
+        return None
+    if not session.get('authenticated'):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Authentication required'}), 401
+        return redirect(url_for('login', next=request.path))
+    return None
+
+
 def format_datetime(dt_str):
     """Formatea datetime string para display"""
     if not dt_str:
@@ -72,6 +104,58 @@ def calculate_duration(start, end):
         return "{}s".format(seconds)
     except:
         return 'N/A'
+
+
+# ==================== ROUTES: AUTH ====================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Pagina de login con proteccion CSRF."""
+    error = None
+    if request.method == 'POST':
+        form_token = request.form.get('csrf_token', '')
+        session_token = session.get('csrf_token', '')
+        if not session_token or not hmac.compare_digest(session_token, form_token):
+            error = 'Token de seguridad invalido. Recarga la pagina e intentalo de nuevo.'
+        else:
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+            if not username or not password:
+                error = 'Introduce usuario y contrasena.'
+            else:
+                try:
+                    conn = get_db_connection()
+                    user = conn.execute(
+                        'SELECT password_hash FROM web_users WHERE username = ? AND is_active = 1',
+                        (username,)
+                    ).fetchone()
+                    if user and check_password_hash(user['password_hash'], password):
+                        conn.execute(
+                            "UPDATE web_users SET last_login = datetime('now') WHERE username = ?",
+                            (username,)
+                        )
+                        conn.commit()
+                        conn.close()
+                        session.clear()
+                        session['authenticated'] = True
+                        session['username'] = username
+                        next_url = request.args.get('next', '/')
+                        # Evitar open redirect: solo permitir rutas relativas del mismo origen
+                        if not next_url.startswith('/') or next_url.startswith('//'):
+                            next_url = '/'
+                        return redirect(next_url)
+                    conn.close()
+                    error = 'Usuario o contrasena incorrectos.'
+                except Exception:
+                    error = 'Error de autenticacion. Contacte al administrador.'
+    return render_template('login.html', error=error)
+
+
+@app.route('/logout')
+def logout():
+    """Cierra la sesion activa."""
+    session.clear()
+    return redirect(url_for('login'))
 
 
 # ==================== ROUTES: PAGES ====================
@@ -250,24 +334,31 @@ def api_deployments():
         offset = (page - 1) * per_page
         
         conn = get_db_connection()
-        
+
+        VALID_STATUSES = {'pending', 'compiling', 'analyzing', 'deploying', 'success', 'failed'}
+
         # Query base
+        params = []
         where_clause = ""
         if status_filter and status_filter != 'all':
-            where_clause = "WHERE status = '{}'".format(status_filter)
-        
+            if status_filter not in VALID_STATUSES:
+                conn.close()
+                return jsonify({'error': 'Invalid status filter'}), 400
+            where_clause = "WHERE status = ?"
+            params.append(status_filter)
+
         # Total count
         total = conn.execute(
-            "SELECT COUNT(*) as count FROM deployments {}".format(where_clause)
+            "SELECT COUNT(*) as count FROM deployments {}".format(where_clause),
+            params
         ).fetchone()['count']
-        
+
         # Deployments
         deployments = conn.execute(
             """SELECT id, tag_name, status, started_at, completed_at, error_message
                FROM deployments {}
-               ORDER BY started_at DESC LIMIT {} OFFSET {}""".format(
-                where_clause, per_page, offset
-            )
+               ORDER BY started_at DESC LIMIT ? OFFSET ?""".format(where_clause),
+            params + [per_page, offset]
         ).fetchall()
         
         conn.close()
@@ -376,20 +467,28 @@ def api_logs_view(filename):
         
         lines = int(request.args.get('lines', 500))
         search = request.args.get('search', '').lower()
-        
+        start_line = int(request.args.get('start_line', -1))
+
         with open(filepath, 'r') as f:
             all_lines = f.readlines()
-        
-        # Filtrar por busqueda si existe
-        if search:
-            all_lines = [line for line in all_lines if search in line.lower()]
-        
-        # Ultimas N lineas
-        content_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-        
+
+        file_total_lines = len(all_lines)
+
+        if start_line >= 0:
+            # Incremental fetch for live-tail: only return new lines since start_line
+            content_lines = all_lines[start_line:]
+            matched_lines = file_total_lines
+        else:
+            # Normal fetch with optional search filter and line truncation
+            if search:
+                all_lines = [line for line in all_lines if search in line.lower()]
+            matched_lines = len(all_lines)
+            content_lines = all_lines[-lines:] if matched_lines > lines else all_lines
+
         return jsonify({
             'filename': filename,
-            'total_lines': len(all_lines),
+            'total_lines': matched_lines,
+            'file_total_lines': file_total_lines,
             'displayed_lines': len(content_lines),
             'content': ''.join(content_lines)
         })
@@ -402,34 +501,53 @@ def api_sonar_results():
     """Resultados SonarQube de todos los deployments"""
     try:
         conn = get_db_connection()
-        
-        # JOIN por tag en lugar de deployment_id (sonar_results.deployment_id puede ser NULL)
-        # Filtrar solo deployments exitosos para consistencia
+
+        # Detectar si las columnas new_* ya existen (migracion gradual)
+        cols = set(row[1] for row in conn.execute('PRAGMA table_info(sonar_results)').fetchall())
+        has_new_cols = 'new_bugs' in cols
+
+        if has_new_cols:
+            select_new = 'sr.new_coverage, sr.new_bugs, sr.new_vulnerabilities, sr.new_code_smells, sr.new_security_hotspots,'
+        else:
+            select_new = 'NULL as new_coverage, NULL as new_bugs, NULL as new_vulnerabilities, NULL as new_code_smells, NULL as new_security_hotspots,'
+
         results = conn.execute(
-            """SELECT sr.*, d.tag_name, d.started_at, d.id as deployment_id
+            """SELECT sr.id as sonar_id, sr.tag, sr.created_at,
+                      sr.coverage, sr.bugs, sr.vulnerabilities, sr.code_smells, sr.security_hotspots,
+                      {new_cols}
+                      sr.passed, sr.quality_gate_status,
+                      d.id as dep_id, d.tag_name, d.started_at
                FROM sonar_results sr
                JOIN deployments d ON sr.tag = d.tag_name
                WHERE d.status = 'success'
-               ORDER BY sr.created_at DESC LIMIT 50"""
+               ORDER BY sr.created_at DESC LIMIT 50""".format(new_cols=select_new)
         ).fetchall()
-        
+
         conn.close()
-        
+
         data = []
         for r in results:
             data.append({
-                'deployment_id': r['deployment_id'],
+                'sonar_id': r['sonar_id'],
+                'deployment_id': r['dep_id'],
                 'tag': r['tag_name'],
                 'date': format_datetime(r['created_at']),
                 'quality_gate': r['quality_gate_status'],
+                'passed': r['passed'],
+                # Overall Code metrics (informativo)
                 'coverage': r['coverage'],
                 'bugs': r['bugs'],
                 'vulnerabilities': r['vulnerabilities'],
                 'code_smells': r['code_smells'],
                 'security_hotspots': r['security_hotspots'],
-                'passed': r['passed']
+                # New Code metrics (los que evalua el Quality Gate)
+                'new_coverage': r['new_coverage'],
+                'new_bugs': r['new_bugs'],
+                'new_vulnerabilities': r['new_vulnerabilities'],
+                'new_code_smells': r['new_code_smells'],
+                'new_security_hotspots': r['new_security_hotspots'],
             })
-        
+
         return jsonify(data)
     except Exception as e:
         print('Error in api_sonar_results: {}'.format(str(e)), file=sys.stderr)
@@ -441,43 +559,360 @@ def api_sonar_trends():
     """Tendencias de metricas SonarQube (ultimos 10 deployments)"""
     try:
         conn = get_db_connection()
-        
-        # JOIN por tag en lugar de deployment_id (sonar_results.deployment_id puede ser NULL)
+
+        # Detectar si las columnas new_* existen
+        cols = set(row[1] for row in conn.execute('PRAGMA table_info(sonar_results)').fetchall())
+        has_new_cols = 'new_bugs' in cols
+
+        if has_new_cols:
+            select_new = 'sr.new_coverage, sr.new_bugs, sr.new_vulnerabilities, sr.new_code_smells,'
+        else:
+            select_new = 'NULL as new_coverage, NULL as new_bugs, NULL as new_vulnerabilities, NULL as new_code_smells,'
+
         results = conn.execute(
-            """SELECT sr.*, d.tag_name, d.started_at
+            """SELECT sr.coverage, sr.bugs, sr.vulnerabilities, sr.code_smells,
+                      {new_cols}
+                      d.tag_name
                FROM sonar_results sr
                JOIN deployments d ON sr.tag = d.tag_name
                WHERE d.status = 'success'
-               ORDER BY sr.created_at DESC LIMIT 10"""
+               ORDER BY sr.created_at DESC LIMIT 10""".format(new_cols=select_new)
         ).fetchall()
-        
+
         conn.close()
-        
+
         labels = []
-        coverage_data = []
-        bugs_data = []
-        vulnerabilities_data = []
-        code_smells_data = []
-        
+        new_bugs_data = []
+        new_vulnerabilities_data = []
+        new_code_smells_data = []
+        overall_coverage_data = []
+        new_coverage_data = []
+
         for r in reversed(list(results)):
             labels.append(r['tag_name'])
-            coverage_data.append(r['coverage'] if r['coverage'] else 0)
-            bugs_data.append(r['bugs'] if r['bugs'] else 0)
-            vulnerabilities_data.append(r['vulnerabilities'] if r['vulnerabilities'] else 0)
-            code_smells_data.append(r['code_smells'] if r['code_smells'] else 0)
-        
+            new_bugs_data.append(r['new_bugs'] if r['new_bugs'] is not None else 0)
+            new_vulnerabilities_data.append(r['new_vulnerabilities'] if r['new_vulnerabilities'] is not None else 0)
+            new_code_smells_data.append(r['new_code_smells'] if r['new_code_smells'] is not None else 0)
+            overall_coverage_data.append(r['coverage'] if r['coverage'] is not None else 0)
+            new_coverage_data.append(r['new_coverage'] if r['new_coverage'] is not None else None)
+
         return jsonify({
             'labels': labels,
-            'coverage': coverage_data,
-            'bugs': bugs_data,
-            'vulnerabilities': vulnerabilities_data,
-            'code_smells': code_smells_data
+            'coverage': overall_coverage_data,
+            'new_coverage': new_coverage_data,
+            'bugs': new_bugs_data,
+            'vulnerabilities': new_vulnerabilities_data,
+            'code_smells': new_code_smells_data
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/pipeline/status')
+def api_pipeline_status():
+    """Estado real del servicio cicd.service via systemctl"""
+    try:
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'cicd'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5
+        )
+        state = result.stdout.decode('utf-8', errors='replace').strip()
+        if not state:
+            state = 'unknown'
+        return jsonify({
+            'status': state,
+            'running': state == 'active'
+        })
+    except Exception as e:
+        return jsonify({'status': 'unknown', 'running': False, 'error': str(e)})
+
+
 # ==================== ERROR HANDLERS ====================
+
+@app.route('/api/deployment/<int:deployment_id>/phases')
+def api_deployment_phases(deployment_id):
+    """Datos de fases del pipeline para visualizacion de progreso por fase"""
+    try:
+        conn = get_db_connection()
+        deployment = conn.execute(
+            'SELECT * FROM deployments WHERE id = ?', (deployment_id,)
+        ).fetchone()
+
+        if not deployment:
+            conn.close()
+            return jsonify({'error': 'Deployment not found'}), 404
+
+        dep_status = deployment['status']
+
+        # Phase timings from execution_log (may not always have data)
+        exec_phase_map = {}
+        try:
+            exec_logs = conn.execute(
+                """SELECT phase,
+                          MIN(timestamp) as first_ts,
+                          MAX(timestamp) as last_ts,
+                          SUM(CASE WHEN level='ERROR' THEN 1 ELSE 0 END) as errors
+                   FROM execution_log
+                   WHERE deployment_id = ?
+                   GROUP BY phase""",
+                (deployment_id,)
+            ).fetchall()
+            for row in exec_logs:
+                exec_phase_map[row['phase']] = {
+                    'start': row['first_ts'],
+                    'end': row['last_ts'],
+                    'errors': row['errors']
+                }
+        except Exception:
+            pass
+
+        # Build logs for compile sub-phases detail
+        build_logs = conn.execute(
+            'SELECT phase, start_time, duration, exit_code FROM build_logs WHERE deployment_id = ? ORDER BY start_time',
+            (deployment_id,)
+        ).fetchall()
+
+        # SonarQube result for the analyze phase
+        sonar = conn.execute(
+            'SELECT quality_gate_status, passed FROM sonar_results WHERE tag = ? ORDER BY created_at DESC LIMIT 1',
+            (deployment['tag_name'],)
+        ).fetchone()
+
+        conn.close()
+
+        # Pipeline phases in execution order: (key, label, execution_log_phase_key)
+        PHASES = [
+            ('checkout', 'Git Checkout',   'checkout'),
+            ('compile',  'Compilacion',    'compile'),
+            ('analyze',  'SonarQube',      'sonar'),
+            ('deploy',   'vCenter Deploy', 'deploy'),
+            ('notify',   'SSH Install',    'notify'),
+        ]
+
+        # Number of phases completed given overall deployment status
+        STATUS_COMPLETED = {
+            'pending':   0,
+            'compiling': 1,
+            'analyzing': 2,
+            'deploying': 3,
+            'success':   5,
+            'failed':    0,  # determined below via execution_log
+        }
+
+        num_completed = STATUS_COMPLETED.get(dep_status, 0)
+        failed_phase_idx = None
+
+        if dep_status == 'failed':
+            # Walk phases in order; count how many ran successfully in exec_log
+            for i, (pkey, plabel, exec_key) in enumerate(PHASES):
+                if exec_key in exec_phase_map:
+                    if exec_phase_map[exec_key]['errors'] > 0:
+                        failed_phase_idx = i
+                        break
+                    num_completed = i + 1
+            if failed_phase_idx is None:
+                # No explicit error found: mark the phase after last seen as failed
+                failed_phase_idx = num_completed if num_completed < len(PHASES) else len(PHASES) - 1
+
+        phases = []
+        for i, (pkey, plabel, exec_key) in enumerate(PHASES):
+            # Determine per-phase status
+            if dep_status == 'success':
+                ph_status = 'completed'
+            elif dep_status == 'failed':
+                if i < num_completed:
+                    ph_status = 'completed'
+                elif i == failed_phase_idx:
+                    ph_status = 'failed'
+                else:
+                    ph_status = 'pending'
+            elif i < num_completed:
+                ph_status = 'completed'
+            elif i == num_completed:
+                ph_status = 'active'
+            else:
+                ph_status = 'pending'
+
+            # Timing from execution_log
+            duration_secs = None
+            duration_str = None
+            if exec_key in exec_phase_map:
+                try:
+                    ts_s = datetime.strptime(exec_phase_map[exec_key]['start'], '%Y-%m-%d %H:%M:%S')
+                    ts_e = datetime.strptime(exec_phase_map[exec_key]['end'], '%Y-%m-%d %H:%M:%S')
+                    duration_secs = max(1, int((ts_e - ts_s).total_seconds()))
+                    m, s = divmod(duration_secs, 60)
+                    duration_str = '{}m {}s'.format(m, s) if m > 0 else '{}s'.format(s)
+                except Exception:
+                    pass
+
+            # Compile phase: derive total duration from build_logs if exec_log has no timing
+            if pkey == 'compile' and build_logs and duration_secs is None:
+                total_secs = sum(bl['duration'] or 0 for bl in build_logs)
+                if total_secs > 0:
+                    duration_secs = total_secs
+                    m, s = divmod(total_secs, 60)
+                    duration_str = '{}m {}s'.format(m, s) if m > 0 else '{}s'.format(s)
+
+            # Sub-phase details
+            details = []
+            if pkey == 'compile' and build_logs:
+                for bl in build_logs:
+                    bl_secs = bl['duration']
+                    bl_dur_str = None
+                    if bl_secs:
+                        m2, s2 = divmod(bl_secs, 60)
+                        bl_dur_str = '{}m {}s'.format(m2, s2) if m2 > 0 else '{}s'.format(s2)
+                    exit_ok = (bl['exit_code'] == 0) if bl['exit_code'] is not None else None
+                    details.append({
+                        'name': bl['phase'],
+                        'duration': bl_dur_str,
+                        'duration_seconds': bl_secs,
+                        'exit_code': bl['exit_code'],
+                        'ok': exit_ok
+                    })
+            if pkey == 'analyze' and sonar:
+                details.append({
+                    'name': 'Quality Gate',
+                    'value': sonar['quality_gate_status'],
+                    'ok': bool(sonar['passed'])
+                })
+
+            phases.append({
+                'key': pkey,
+                'label': plabel,
+                'status': ph_status,
+                'duration': duration_str,
+                'duration_seconds': duration_secs,
+                'details': details
+            })
+
+        return jsonify({
+            'deployment_id': deployment_id,
+            'tag': deployment['tag_name'],
+            'status': dep_status,
+            'phases': phases
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== ROUTES & API: USERS ====================
+
+@app.route('/users')
+def users():
+    """Pagina de gestion de usuarios."""
+    return render_template('users.html')
+
+
+def _validate_csrf_api():
+    """Valida el CSRF token para llamadas AJAX (header X-CSRF-Token o campo de formulario)."""
+    session_token = session.get('csrf_token', '')
+    request_token = (
+        request.headers.get('X-CSRF-Token', '') or
+        request.form.get('csrf_token', '')
+    )
+    if not session_token or not request_token:
+        return False
+    return hmac.compare_digest(session_token, request_token)
+
+
+@app.route('/api/users')
+def api_users_list():
+    """Lista todos los usuarios (sin hashes)."""
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            'SELECT id, username, is_active, created_at, last_login FROM web_users ORDER BY username'
+        ).fetchall()
+        conn.close()
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+def api_users_create():
+    """Crea un nuevo usuario."""
+    if not _validate_csrf_api():
+        return jsonify({'error': 'Token CSRF invalido.'}), 400
+    try:
+        data = request.get_json() or {}
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        if not username or len(username) > 64:
+            return jsonify({'error': 'El nombre de usuario debe tener entre 1 y 64 caracteres.'}), 400
+        if len(password) < 8:
+            return jsonify({'error': 'La contrasena debe tener al menos 8 caracteres.'}), 400
+        password_hash = generate_password_hash(password)
+        conn = get_db_connection()
+        try:
+            conn.execute(
+                'INSERT INTO web_users (username, password_hash) VALUES (?, ?)',
+                (username, password_hash)
+            )
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'username': username})
+        except sqlite3.IntegrityError:
+            conn.close()
+            return jsonify({'error': 'El usuario "{}" ya existe.'.format(username)}), 409
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<username>/toggle', methods=['POST'])
+def api_users_toggle(username):
+    """Activa o desactiva un usuario."""
+    if not _validate_csrf_api():
+        return jsonify({'error': 'Token CSRF invalido.'}), 400
+    if username == session.get('username'):
+        return jsonify({'error': 'No puedes desactivar tu propio usuario.'}), 400
+    try:
+        conn = get_db_connection()
+        user = conn.execute(
+            'SELECT is_active FROM web_users WHERE username = ?', (username,)
+        ).fetchone()
+        if not user:
+            conn.close()
+            return jsonify({'error': 'Usuario no encontrado.'}), 404
+        new_state = 0 if user['is_active'] else 1
+        conn.execute(
+            'UPDATE web_users SET is_active = ? WHERE username = ?', (new_state, username)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, 'username': username, 'is_active': new_state})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<username>/change-password', methods=['POST'])
+def api_users_change_password(username):
+    """Cambia la contrasena de un usuario."""
+    if not _validate_csrf_api():
+        return jsonify({'error': 'Token CSRF invalido.'}), 400
+    try:
+        data = request.get_json() or {}
+        password = data.get('password') or ''
+        if len(password) < 8:
+            return jsonify({'error': 'La contrasena debe tener al menos 8 caracteres.'}), 400
+        password_hash = generate_password_hash(password)
+        conn = get_db_connection()
+        cursor = conn.execute(
+            'UPDATE web_users SET password_hash = ? WHERE username = ?',
+            (password_hash, username)
+        )
+        conn.commit()
+        conn.close()
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Usuario no encontrado.'}), 404
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.errorhandler(404)
 def not_found(error):

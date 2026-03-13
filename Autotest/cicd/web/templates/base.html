@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="current-user" content="{{ session.get('username', '') }}">
     <title>{% block title %}GALTTCMC CI/CD Pipeline{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS (local) -->
+    <script src="{{ url_for('static', filename='js/tailwind.min.js') }}"></script>
     <script>
         tailwind.config = {
             darkMode: 'class'
@@ -16,11 +18,11 @@
     <!-- Custom JavaScript (before Alpine.js) -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Alpine.js (local) -->
+    <script defer src="{{ url_for('static', filename='js/alpine.min.js') }}"></script>
     
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js (local) -->
+    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -58,7 +60,14 @@
                     <!-- Auto-refresh toggle -->
                     <div class="flex items-center space-x-2 text-white" x-data="{ autoRefresh: false }">
                         <label class="text-sm">Auto-refresh</label>
-                        <button @click="autoRefresh = !autoRefresh" 
+                        <button @click="
+                                autoRefresh = !autoRefresh;
+                                if (autoRefresh) {
+                                    startAutoRefresh(window.pageRefreshCallback || (() => location.reload()), 30);
+                                } else {
+                                    stopAutoRefresh();
+                                }
+                                " 
                                 :class="autoRefresh ? 'bg-green-500' : 'bg-gray-400'"
                                 class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors">
                             <span :class="autoRefresh ? 'translate-x-6' : 'translate-x-1'"
@@ -76,6 +85,16 @@
                         </svg>
                     </button>
                     
+                    <!-- Usuario autenticado + logout -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-indigo-200 text-sm hidden sm:inline">{{ session.get('username', '') }}</span>
+                        <a href="{{ url_for('logout') }}"
+                           class="text-white text-sm font-medium border border-indigo-400 px-2 py-1 rounded
+                                  hover:bg-indigo-700 transition-colors">
+                            Salir
+                        </a>
+                    </div>
+
                     <!-- Server status -->
                     <div class="flex items-center space-x-2">
                         <div class="h-2 w-2 rounded-full bg-green-400 animate-pulse"></div>
@@ -124,6 +143,14 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
                     SonarQube Results
+                </a>
+
+                <a href="{{ url_for('users') }}"
+                   class="mt-1 group flex items-center px-2 py-2 text-base font-medium rounded-md {% if request.endpoint == 'users' %}bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-200{% else %}text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700{% endif %}">
+                    <svg class="mr-4 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    Usuarios
                 </a>
             </nav>
             
