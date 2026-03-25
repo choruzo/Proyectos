@@ -1,0 +1,82 @@
+{
+  "snapshots": [
+    {
+      "vms_total": 96,
+      "vms_on": 49,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10146.2,
+      "datastores_used_pct": 24.4,
+      "cpu_usage_pct": 21.7,
+      "mem_usage_pct": 34.0,
+      "timestamp": "2026-03-10T14:30:21.471734+00:00"
+    },
+    {
+      "vms_total": 96,
+      "vms_on": 49,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10146.2,
+      "datastores_used_pct": 24.4,
+      "cpu_usage_pct": 23.3,
+      "mem_usage_pct": 34.3,
+      "timestamp": "2026-03-10T14:35:27.279726+00:00"
+    },
+    {
+      "vms_total": 97,
+      "vms_on": 52,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10115.6,
+      "datastores_used_pct": 24.7,
+      "cpu_usage_pct": 23.1,
+      "mem_usage_pct": 36.3,
+      "timestamp": "2026-03-10T15:16:36.392540+00:00"
+    },
+    {
+      "vms_total": 97,
+      "vms_on": 52,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10115.6,
+      "datastores_used_pct": 24.7,
+      "cpu_usage_pct": 20.6,
+      "mem_usage_pct": 36.4,
+      "timestamp": "2026-03-10T15:21:43.165609+00:00"
+    },
+    {
+      "vms_total": 97,
+      "vms_on": 52,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10119.9,
+      "datastores_used_pct": 24.6,
+      "cpu_usage_pct": 20.4,
+      "mem_usage_pct": 35.0,
+      "timestamp": "2026-03-10T15:27:04.121018+00:00"
+    },
+    {
+      "vms_total": 97,
+      "vms_on": 52,
+      "hosts_total": 3,
+      "hosts_connected": 3,
+      "hosts_in_maintenance": 0,
+      "datastores_total_gb": 13428.4,
+      "datastores_free_gb": 10119.9,
+      "datastores_used_pct": 24.6,
+      "cpu_usage_pct": 23.2,
+      "mem_usage_pct": 35.6,
+      "timestamp": "2026-03-10T15:34:26.333293+00:00"
+    }
+  ]
+}
