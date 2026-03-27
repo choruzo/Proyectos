@@ -1,0 +1,71 @@
+# =============================================================================
+# CI/CD Pipeline Configuration
+# =============================================================================
+# Fichero de configuración principal para el pipeline CI/CD
+# Ubicación: /home/YOUR_USER/cicd/config/ci_cd_config.yaml
+
+general:
+  polling_interval_seconds: 300    # 5 minutos
+  working_directory: /home/YOUR_USER/cicd
+  log_directory: /home/YOUR_USER/cicd/logs
+  db_path: /home/YOUR_USER/cicd/db/pipeline.db
+
+git:
+  repo_url: https://YOUR_GIT_SERVER/YOUR_ORG/YOUR_REPO
+  branch: YOUR_GIT_BRANCH
+  repo_local_path: /home/YOUR_USER/GALTTCMC
+  compile_path: /home/YOUR_USER/V08.XX.XX.XX
+  # Patrón regex para tags: MAC_X_VXX_XX_XX_XX (oficiales) o VXX_XX_XX_XX (internas)
+  # Permite sufijos opcionales: VXX_XX_XX_XX_SufijoOpcional
+  #tag_pattern: "^(MAC_[0-9]+_)?V[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}$"
+  tag_pattern: "^(MAC_[0-9]+_)?V[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}(_.*)?$"
+  credentials:
+    username: agent
+    # Usar token o password (preferible token) - configurar en .env
+    password: "${GIT_PASSWORD}"
+
+compilation:
+  build_script: Development_TTCF/ttcf/utils/dvds/build_DVDs.sh
+  output_iso: InstallationDVD.iso
+  timeout_seconds: 3600  # 1 hora máximo para compilación
+
+sonarqube:
+  url: https://YOUR_SONARQUBE_SERVER
+  project_key: GALTTCMC_interno
+  token: "${SONAR_TOKEN}"  # Configurar en .env (usar sonar.login existente)
+  # NOTA: Estos umbrales son INFORMATIVOS. La decisión real de pass/fail
+  # la toma el Quality Gate de SonarQube (que evalúa solo código nuevo).
+  # sonar_check.py usa la API /api/qualitygates/project_status como fuente de verdad.
+  thresholds:
+    coverage: 80.0           # >= 80% (overall code, informativo)
+    bugs: 0                  # = 0 (overall code, informativo)
+    vulnerabilities: 0       # = 0 (overall code, informativo)
+    code_smells: 10000       # <= 10000 (overall code, informativo)
+    security_hotspots: 0     # = 0 (overall code, informativo)
+  allow_override: true      # Si true, permite continuar con supervisión
+
+vcenter:
+  url: https://YOUR_VCENTER_IP/
+  username: "${VCENTER_USER}"
+  password: "${VCENTER_PASSWORD}"
+  datacenter: "YOUR_DATACENTER"
+  datastore: "YOUR_DATASTORE"          # Datastore donde se subirá el ISO generado
+  iso_path: "/P27/Versiones"         # Carpeta dentro del datastore para las ISOs
+  vm_name: "YOUR_CICD_VM"
+  snapshot_name: "clean_install"   # Nombre del snapshot al que revertir antes del despliegue
+  repository_iso: "[YOUR_DATASTORE] P27/Repositorio/YOUR_REPO_ISO_NAME.iso"  # ISO del repositorio para instalación
+
+target_vm:
+  ip: YOUR_TARGET_VM_IP
+  ssh_user: root
+  ssh_key_path: /home/YOUR_USER/.ssh/id_rsa
+  mount_point: /mnt/cdrom
+  install_path: /root/install
+  install_script: install.sh
+  install_params: "ope 1 - YES yes"  # Parámetros para el script de instalación
+
+notifications:
+  wall_enabled: true
+  profile_script: /etc/profile.d/informacion.sh
+  notify_on_success: true
+  notify_on_failure: true

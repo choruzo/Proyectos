@@ -1,0 +1,648 @@
+{% extends "base.html" %}
+
+{% block title %}Pipeline Runs - GALTTCMC CI/CD Pipeline{% endblock %}
+
+{% block content %}
+<div x-data="pipelineRunsData()">
+    <!-- Header -->
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Pipeline Runs</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Historial completo de ejecuciones del pipeline
+        </p>
+    </div>
+    
+    <!-- Filters -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 mb-6">
+        <div class="flex flex-wrap gap-4 items-center">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status Filter</label>
+                <select x-model="statusFilter" @change="loadDeployments(1)" 
+                        class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="all">All</option>
+                    <option value="success">Success</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                    <option value="compiling">Compiling</option>
+                    <option value="analyzing">Analyzing</option>
+                    <option value="deploying">Deploying</option>
+                </select>
+            </div>
+            
+            <div class="flex-1"></div>
+            
+            <button @click="loadDeployments(currentPage)" 
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+    
+    <!-- Deployments Table -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tag</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Started</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Finished</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    <template x-for="deployment in deployments" :key="deployment.id">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white" x-text="deployment.id"></td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="deployment.tag"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': deployment.status === 'success',
+                                          'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': deployment.status === 'failed',
+                                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': ['pending', 'compiling', 'analyzing', 'deploying'].includes(deployment.status),
+                                          'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300': !['success', 'failed', 'pending', 'compiling', 'analyzing', 'deploying'].includes(deployment.status)
+                                      }"
+                                      x-text="deployment.status"></span>
+                                <div class="flex mt-1.5 gap-0.5" title="Progreso por fase">
+                                    <template x-for="dot in getPhaseDotsFromStatus(deployment.status)" :key="dot.key">
+                                        <div class="h-1 flex-1 rounded-sm" :class="dot.color" :title="dot.label"></div>
+                                    </template>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.started_at"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.finished_at"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.duration"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button @click="viewDetails(deployment.id)" 
+                                        class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">
+                                    View Details
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="deployments.length === 0">
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <p class="mt-2">No deployments found</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+            <div class="flex-1 flex justify-between sm:hidden">
+                <button @click="loadDeployments(currentPage - 1)" 
+                        :disabled="currentPage === 1"
+                        class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    Previous
+                </button>
+                <button @click="loadDeployments(currentPage + 1)" 
+                        :disabled="currentPage === totalPages"
+                        class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    Next
+                </button>
+            </div>
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm text-gray-700 dark:text-gray-300">
+                        Showing page <span class="font-medium" x-text="currentPage"></span> of <span class="font-medium" x-text="totalPages"></span>
+                        <span class="text-gray-500 dark:text-gray-400"> (Total: <span x-text="totalDeployments"></span> deployments)</span>
+                    </p>
+                </div>
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <button @click="loadDeployments(currentPage - 1)" 
+                                :disabled="currentPage === 1"
+                                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <span x-text="currentPage"></span>
+                        </span>
+                        <button @click="loadDeployments(currentPage + 1)" 
+                                :disabled="currentPage === totalPages"
+                                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Detail Modal -->
+    <div x-show="showDetailModal"
+         x-cloak
+         class="fixed z-10 inset-0 overflow-y-auto"
+         aria-labelledby="modal-title"
+         role="dialog"
+         aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDetailModal = false"></div>
+
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div class="bg-white dark:bg-gray-800 px-6 pt-5 pb-4">
+                    <div class="w-full">
+
+                        <!-- Modal Header -->
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                Deployment Details &mdash;
+                                <span x-text="selectedDeployment.tag" class="text-indigo-600 dark:text-indigo-400"></span>
+                            </h3>
+                            <button @click="showDetailModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Tabs -->
+                        <div class="border-b border-gray-200 dark:border-gray-700 mb-4">
+                            <nav class="-mb-px flex space-x-6">
+                                <button @click="activeModalTab = 'overview'"
+                                        :class="activeModalTab === 'overview' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                                        class="whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm transition-colors">
+                                    Overview
+                                </button>
+                                <button @click="activeModalTab = 'build_logs'"
+                                        :class="activeModalTab === 'build_logs' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                                        class="whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm transition-colors inline-flex items-center gap-1.5">
+                                    Build Logs
+                                    <span x-show="selectedDeployment.build_logs && selectedDeployment.build_logs.length > 0"
+                                          class="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full text-xs px-1.5 py-0.5"
+                                          x-text="selectedDeployment.build_logs ? selectedDeployment.build_logs.length : 0"></span>
+                                </button>
+                                <button @click="activeModalTab = 'sonar'"
+                                        :class="activeModalTab === 'sonar' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                                        class="whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm transition-colors inline-flex items-center gap-1.5">
+                                    SonarQube
+                                    <span x-show="selectedDeployment.sonar_results && selectedDeployment.sonar_results.length > 0"
+                                          :class="selectedDeployment.sonar_results && selectedDeployment.sonar_results[0] && selectedDeployment.sonar_results[0].passed ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'"
+                                          class="rounded-full text-xs px-1.5 py-0.5"
+                                          x-text="selectedDeployment.sonar_results && selectedDeployment.sonar_results[0] ? selectedDeployment.sonar_results[0].quality_gate_status : ''"></span>
+                                </button>
+                                <button @click="activeModalTab = 'phases'"
+                                        :class="activeModalTab === 'phases' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                                        class="whitespace-nowrap pb-3 px-1 border-b-2 font-medium text-sm transition-colors inline-flex items-center gap-1.5">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                    </svg>
+                                    Fases
+                                </button>
+                            </nav>
+                        </div>
+
+                        <!-- Tab: Overview -->
+                        <div x-show="activeModalTab === 'overview'" class="space-y-4 min-h-48">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Status</label>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                          :class="{
+                                              'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': selectedDeployment.status === 'success',
+                                              'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': selectedDeployment.status === 'failed',
+                                              'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': ['pending', 'compiling', 'analyzing', 'deploying'].includes(selectedDeployment.status),
+                                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300': !['success','failed','pending','compiling','analyzing','deploying'].includes(selectedDeployment.status)
+                                          }"
+                                          x-text="selectedDeployment.status"></span>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Duration</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.duration || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Started At</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.started_at || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Finished At</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.finished_at || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Triggered By</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedDeployment.triggered_by || 'N/A'"></p>
+                                </div>
+                            </div>
+                            <div x-show="selectedDeployment.error_message">
+                                <label class="block text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide mb-1">Error Message</label>
+                                <p class="text-sm text-red-900 dark:text-red-200 bg-red-50 dark:bg-red-900/20 p-3 rounded font-mono whitespace-pre-wrap" x-text="selectedDeployment.error_message"></p>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Build Logs -->
+                        <div x-show="activeModalTab === 'build_logs'" class="min-h-48">
+                            <template x-if="selectedDeployment.build_logs && selectedDeployment.build_logs.length > 0">
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                                        <thead class="bg-gray-50 dark:bg-gray-700">
+                                            <tr>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Phase</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exit Code</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Log File</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                            <template x-for="log in selectedDeployment.build_logs" :key="log.id">
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-900 dark:text-white capitalize" x-text="log.phase"></td>
+                                                    <td class="px-4 py-2 text-gray-500 dark:text-gray-400" x-text="formatDuration(log.duration)"></td>
+                                                    <td class="px-4 py-2">
+                                                        <span :class="log.exit_code === 0 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'"
+                                                              class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                              x-text="log.exit_code !== null && log.exit_code !== undefined ? log.exit_code : 'N/A'"></span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs truncate max-w-xs" :title="log.log_file" x-text="log.log_file || '\u2014'"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+                            <template x-if="!selectedDeployment.build_logs || selectedDeployment.build_logs.length === 0">
+                                <div class="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500">
+                                    <svg class="h-10 w-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    <p class="text-sm">No build log data available</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Tab: SonarQube -->
+                        <div x-show="activeModalTab === 'sonar'" class="min-h-48">
+                            <template x-if="selectedDeployment.sonar_results && selectedDeployment.sonar_results.length > 0">
+                                <div class="space-y-4">
+                                    <!-- Quality Gate header -->
+                                    <div class="flex items-center gap-3 p-3 rounded-lg"
+                                         :class="selectedDeployment.sonar_results[0].passed ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'">
+                                        <div class="flex-shrink-0">
+                                            <svg x-show="selectedDeployment.sonar_results[0].passed" class="h-6 w-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            <svg x-show="!selectedDeployment.sonar_results[0].passed" class="h-6 w-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold"
+                                               :class="selectedDeployment.sonar_results[0].passed ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'">
+                                                Quality Gate: <span x-text="selectedDeployment.sonar_results[0].quality_gate_status"></span>
+                                            </p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400" x-text="selectedDeployment.sonar_results[0].timestamp || ''"></p>
+                                        </div>
+                                    </div>
+                                    <!-- Metrics table -->
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Metric</th>
+                                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Overall Code</th>
+                                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">New Code</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Coverage</td>
+                                                    <td class="px-4 py-2 text-center text-gray-900 dark:text-white"
+                                                        x-text="selectedDeployment.sonar_results[0].coverage !== null ? selectedDeployment.sonar_results[0].coverage + '%' : '\u2014'"></td>
+                                                    <td class="px-4 py-2 text-center text-gray-900 dark:text-white"
+                                                        x-text="selectedDeployment.sonar_results[0].new_coverage !== null ? selectedDeployment.sonar_results[0].new_coverage + '%' : '\u2014'"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Bugs</td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].bugs > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].bugs !== null ? selectedDeployment.sonar_results[0].bugs : '\u2014'"></span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].new_bugs > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].new_bugs !== null ? selectedDeployment.sonar_results[0].new_bugs : '\u2014'"></span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Vulnerabilities</td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].vulnerabilities > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].vulnerabilities !== null ? selectedDeployment.sonar_results[0].vulnerabilities : '\u2014'"></span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].new_vulnerabilities > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].new_vulnerabilities !== null ? selectedDeployment.sonar_results[0].new_vulnerabilities : '\u2014'"></span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Code Smells</td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].code_smells > 10 ? 'text-yellow-600 dark:text-yellow-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].code_smells !== null ? selectedDeployment.sonar_results[0].code_smells : '\u2014'"></span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].new_code_smells > 10 ? 'text-yellow-600 dark:text-yellow-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].new_code_smells !== null ? selectedDeployment.sonar_results[0].new_code_smells : '\u2014'"></span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Security Hotspots</td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].security_hotspots > 0 ? 'text-orange-600 dark:text-orange-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].security_hotspots !== null ? selectedDeployment.sonar_results[0].security_hotspots : '\u2014'"></span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span :class="selectedDeployment.sonar_results[0].new_security_hotspots > 0 ? 'text-orange-600 dark:text-orange-400 font-semibold' : 'text-gray-900 dark:text-white'"
+                                                              x-text="selectedDeployment.sonar_results[0].new_security_hotspots !== null ? selectedDeployment.sonar_results[0].new_security_hotspots : '\u2014'"></span>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="!selectedDeployment.sonar_results || selectedDeployment.sonar_results.length === 0">
+                                <div class="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500">
+                                    <svg class="h-10 w-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                    </svg>
+                                    <p class="text-sm">No SonarQube data available for this deployment</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Tab: Phases -->
+                        <div x-show="activeModalTab === 'phases'" class="min-h-48">
+                            <!-- Loading -->
+                            <div x-show="!phasesData" class="flex items-center justify-center py-12">
+                                <svg class="animate-spin h-5 w-5 text-indigo-600 mr-2" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                <span class="text-sm text-gray-500 dark:text-gray-400">Cargando datos de fases&hellip;</span>
+                            </div>
+
+                            <template x-if="phasesData && phasesData.phases">
+                                <div class="space-y-6">
+
+                                    <!-- Horizontal stepper -->
+                                    <div>
+                                        <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">Progreso del Pipeline</h4>
+                                        <div class="flex items-start">
+                                            <template x-for="(phase, idx) in phasesData.phases" :key="phase.key">
+                                                <div class="flex-1 flex flex-col items-center text-center relative">
+                                                    <!-- Connector + circle row -->
+                                                    <div class="flex items-center w-full">
+                                                        <!-- Left connector -->
+                                                        <div class="flex-1 h-0.5"
+                                                             :class="idx === 0 ? 'invisible' : (phase.status === 'completed' || phase.status === 'active' || phase.status === 'failed' ? 'bg-green-400 dark:bg-green-600' : 'bg-gray-200 dark:bg-gray-600')"></div>
+                                                        <!-- Status circle -->
+                                                        <div class="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center shadow-sm border-2"
+                                                             :class="{
+                                                                 'bg-green-500 border-green-600 text-white': phase.status === 'completed',
+                                                                 'bg-yellow-400 border-yellow-500 text-white': phase.status === 'active',
+                                                                 'bg-red-500 border-red-600 text-white': phase.status === 'failed',
+                                                                 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500 text-gray-400': phase.status === 'pending'
+                                                             }">
+                                                            <!-- Completed: check -->
+                                                            <svg x-show="phase.status === 'completed'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                                            </svg>
+                                                            <!-- Active: spinner -->
+                                                            <svg x-show="phase.status === 'active'" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                            </svg>
+                                                            <!-- Failed: X -->
+                                                            <svg x-show="phase.status === 'failed'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+                                                            </svg>
+                                                            <!-- Pending: number -->
+                                                            <span x-show="phase.status === 'pending'" class="text-xs font-bold" x-text="idx + 1"></span>
+                                                        </div>
+                                                        <!-- Right connector -->
+                                                        <div class="flex-1 h-0.5"
+                                                             :class="idx === phasesData.phases.length - 1 ? 'invisible' : (phasesData.phases[idx + 1] && phasesData.phases[idx + 1].status !== 'pending' ? 'bg-green-400 dark:bg-green-600' : 'bg-gray-200 dark:bg-gray-600')"></div>
+                                                    </div>
+                                                    <!-- Label and duration -->
+                                                    <div class="mt-2 px-1">
+                                                        <p class="text-xs font-semibold leading-tight"
+                                                           :class="{
+                                                               'text-green-700 dark:text-green-400': phase.status === 'completed',
+                                                               'text-yellow-700 dark:text-yellow-400': phase.status === 'active',
+                                                               'text-red-700 dark:text-red-400': phase.status === 'failed',
+                                                               'text-gray-400 dark:text-gray-500': phase.status === 'pending'
+                                                           }"
+                                                           x-text="phase.label"></p>
+                                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5"
+                                                           x-show="phase.duration"
+                                                           x-text="phase.duration"></p>
+                                                        <p class="text-xs text-gray-300 dark:text-gray-600 mt-0.5"
+                                                           x-show="!phase.duration && phase.status === 'active'">en curso&hellip;</p>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <!-- Duration comparison bars (only when timing data is available) -->
+                                    <template x-if="hasTiming(phasesData.phases)">
+                                        <div>
+                                            <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Distribuci&oacute;n de tiempo</h4>
+                                            <div class="space-y-2">
+                                                <template x-for="phase in phasesData.phases" :key="phase.key + '_bar'">
+                                                    <div x-show="phase.duration_seconds !== null && phase.duration_seconds > 0" class="flex items-center gap-3">
+                                                        <div class="w-28 text-xs text-right text-gray-500 dark:text-gray-400 shrink-0 truncate" x-text="phase.label"></div>
+                                                        <div class="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-5 relative overflow-hidden">
+                                                            <div class="h-full rounded-full flex items-center justify-end pr-1.5 transition-all duration-700 ease-out"
+                                                                 :class="{
+                                                                     'bg-green-500': phase.status === 'completed',
+                                                                     'bg-yellow-400': phase.status === 'active',
+                                                                     'bg-red-500': phase.status === 'failed',
+                                                                     'bg-gray-300 dark:bg-gray-600': phase.status === 'pending'
+                                                                 }"
+                                                                 :style="'width: ' + getBarWidth(phase.duration_seconds, phasesData.phases) + '%'">
+                                                                <span x-show="getBarWidth(phase.duration_seconds, phasesData.phases) >= 15"
+                                                                      class="text-white text-xs font-medium"
+                                                                      x-text="getBarWidth(phase.duration_seconds, phasesData.phases) + '%'"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="w-20 text-xs text-gray-500 dark:text-gray-400 shrink-0" x-text="phase.duration"></div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Sub-phase details (compile sub-phases + sonar gate) -->
+                                    <template x-for="phase in phasesData.phases" :key="phase.key + '_details'">
+                                        <div x-show="phase.details && phase.details.length > 0">
+                                            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                                                <h5 class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+                                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                                                    </svg>
+                                                    <span x-text="phase.label + ' — Detalle'"></span>
+                                                </h5>
+                                                <div class="divide-y divide-gray-200 dark:divide-gray-600">
+                                                    <template x-for="detail in phase.details" :key="detail.name">
+                                                        <div class="flex items-center gap-3 py-1.5 text-xs">
+                                                            <span class="capitalize font-medium text-gray-700 dark:text-gray-300 w-24 shrink-0" x-text="detail.name"></span>
+                                                            <!-- ok indicator -->
+                                                            <span x-show="detail.ok === true" class="text-green-500 shrink-0">
+                                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                                            </span>
+                                                            <span x-show="detail.ok === false" class="text-red-500 shrink-0">
+                                                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                            </span>
+                                                            <span class="text-gray-500 dark:text-gray-400 flex-1" x-text="detail.duration || detail.value || ''"></span>
+                                                            <span x-show="detail.exit_code !== null && detail.exit_code !== undefined"
+                                                                  :class="detail.exit_code === 0 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'"
+                                                                  class="px-1.5 py-0.5 rounded text-xs font-mono shrink-0"
+                                                                  x-text="'exit ' + detail.exit_code"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                </div>
+                            </template>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button @click="showDetailModal = false"
+                            type="button"
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function pipelineRunsData() {
+    return {
+        deployments: [],
+        currentPage: 1,
+        totalPages: 1,
+        totalDeployments: 0,
+        statusFilter: 'all',
+        showDetailModal: false,
+        selectedDeployment: {},
+        activeModalTab: 'overview',
+        phasesData: null,
+
+        async init() {
+            await this.loadDeployments(1);
+            window.pageRefreshCallback = async () => {
+                await this.loadDeployments(this.currentPage);
+            };
+        },
+
+        async loadDeployments(page) {
+            try {
+                const response = await fetch(`/api/deployments?page=${page}&status=${this.statusFilter}`);
+                const data = await response.json();
+
+                this.deployments = data.deployments;
+                this.currentPage = data.page;
+                this.totalPages = data.pages;
+                this.totalDeployments = data.total;
+            } catch (error) {
+                console.error('Error loading deployments:', error);
+            }
+        },
+
+        async viewDetails(deploymentId) {
+            try {
+                this.phasesData = null;
+                const response = await fetch(`/api/deployment/${deploymentId}`);
+                this.selectedDeployment = await response.json();
+                this.activeModalTab = 'overview';
+                this.showDetailModal = true;
+                this.loadPhases(deploymentId);
+            } catch (error) {
+                console.error('Error loading deployment details:', error);
+            }
+        },
+
+        async loadPhases(deploymentId) {
+            try {
+                const response = await fetch(`/api/deployment/${deploymentId}/phases`);
+                this.phasesData = await response.json();
+            } catch (error) {
+                console.error('Error loading phases:', error);
+            }
+        },
+
+        hasTiming(phases) {
+            return phases && phases.some(p => p.duration_seconds !== null && p.duration_seconds > 0);
+        },
+
+        getBarWidth(secs, phases) {
+            if (!secs || secs <= 0) return 0;
+            const total = phases.reduce((sum, p) => sum + (p.duration_seconds || 0), 0);
+            if (!total) return 1;
+            return Math.max(2, Math.round(secs / total * 100));
+        },
+
+        getPhaseDotsFromStatus(status) {
+            const phases = [
+                { key: 'checkout', label: 'Git Checkout' },
+                { key: 'compile',  label: 'Compilacion' },
+                { key: 'analyze',  label: 'SonarQube' },
+                { key: 'deploy',   label: 'vCenter Deploy' },
+                { key: 'notify',   label: 'SSH Install' }
+            ];
+            const numDone = { pending: 0, compiling: 1, analyzing: 2, deploying: 3, success: 5, failed: 0 }[status] || 0;
+            return phases.map((p, i) => {
+                let color;
+                if (status === 'success') {
+                    color = 'bg-green-500';
+                } else if (status === 'failed') {
+                    color = 'bg-gray-300 dark:bg-gray-600';
+                } else if (i < numDone) {
+                    color = 'bg-green-500';
+                } else if (i === numDone) {
+                    color = 'bg-yellow-400';
+                } else {
+                    color = 'bg-gray-300 dark:bg-gray-600';
+                }
+                return { key: p.key, label: p.label, color };
+            });
+        },
+
+        formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) return 'N/A';
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return m > 0 ? m + 'm ' + s + 's' : s + 's';
+        }
+    }
+}
+</script>
+{% endblock %}

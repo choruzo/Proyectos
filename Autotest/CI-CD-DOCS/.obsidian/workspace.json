@@ -1,0 +1,220 @@
+{
+  "main": {
+    "id": "360eb9c68d4aac56",
+    "type": "split",
+    "children": [
+      {
+        "id": "9eb118038f7a97dd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5bf312871e42a364",
+            "type": "leaf",
+            "state": {
+              "type": "canvas",
+              "state": {
+                "file": "GALTTCMC CI-CD - Estado Completo.canvas",
+                "viewState": {
+                  "x": -1351.7969502721871,
+                  "y": 1042.7217044651782,
+                  "zoom": -1.6705590195974598
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "GALTTCMC CI-CD - Estado Completo"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8933e63302b29100",
+    "type": "split",
+    "children": [
+      {
+        "id": "fb4d0946c1d70f59",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "be2d030d36b96c40",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "47f76478356d1cc9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "333f96e3f3d6a7b0",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "ea10ad447c939332",
+    "type": "split",
+    "children": [
+      {
+        "id": "c0837d48be6958fc",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "746c77b222b734f9",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "GALTTCMC CI-CD - Estado Completo.canvas",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes de GALTTCMC CI-CD - Estado Completo"
+            }
+          },
+          {
+            "id": "9980bfed3ad2f236",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "GALTTCMC CI-CD - Estado Completo.canvas",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes de GALTTCMC CI-CD - Estado Completo"
+            }
+          },
+          {
+            "id": "9193bbae2fa90c78",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "3069a4f0a4cf942e",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "57f23dd068f45a33",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "GALTTCMC CI-CD - Estado Completo.canvas",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema de GALTTCMC CI-CD - Estado Completo"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "5bf312871e42a364",
+  "lastOpenFiles": [
+    "GALTTCMC CI-CD - Estado Completo.canvas",
+    "Sin título.base",
+    "Sin título.canvas",
+    "01 - Quick Start.md",
+    "Referencia - Logs.md",
+    "2026-03-20.md",
+    "Modelo de Datos.md",
+    "Web - Visualización de Datos.md",
+    "Web - API Endpoints.md",
+    "Web - Arquitectura.md",
+    "Arquitectura Web UI.md",
+    "00 - Visión General.md",
+    "Operación - Troubleshooting.md",
+    "Diagrama - Flujo Completo.md",
+    "Arquitectura del Pipeline.md",
+    "Operación - Monitorización.md",
+    "Referencia - Configuración.md",
+    "Pipeline - Common Functions.md",
+    "Operación - Instalación.md",
+    "Operación - Mantenimiento.md",
+    "Diagrama - Dependencias.md",
+    "Pipeline - SSH Deploy.md",
+    "Referencia - APIs Externas.md",
+    "Diagrama - Estados.md",
+    "Referencia - Base de Datos.md",
+    "Web - Frontend Components.md",
+    "Pipeline - vCenter.md",
+    "Pipeline - SonarQube.md"
+  ]
+}
