@@ -1,0 +1,11 @@
+# Duna Serena
+
+**Duna Serena** es una disciplina de forma y silencio: una estética donde el espacio respira, las masas se comportan como geología lenta y cada gesto parece inevitable. La composición se construye con paciencia y una jerarquía casi táctil: grandes planos quietos, módulos suaves y ritmos discretos que guían la mirada sin empujarla. El resultado debe sentirse **meticulosamente elaborado**, como si cada distancia, borde y vacío hubiese sido calibrado con **atención obsesiva** por alguien en la cima de su oficio.
+
+El color se entiende como material: tonos de cal y arena para la luz; brasa y cítrico para la energía; carbón profundo para la pausa. No hay saturación gratuita: toda intensidad existe en contraste con un campo reposado. Los acentos cálidos nunca “gritan”; arden bajo control, aplicados con **precisión de maestro** y una economía que sugiere horas de pruebas, iteraciones y correcciones. La paleta debe verse **painstakingly tuned** —no “bonita”, sino exacta.
+
+La forma renuncia al estruendo y adopta bordes redondeados, sombras contenidas y una arquitectura de capas que se percibe más que se declara. Las curvas no son decorativas: son una ética de suavidad. Las superficies mantienen una textura sutil —casi papel, casi polvo— que se revela en la cercanía y recompensa la mirada prolongada. Cada plano debe sentirse **hecho a mano**, pulido con **escrutinio profesional**, sin artefactos ni accidentes.
+
+La tipografía es una herramienta clínica y poética a la vez: títulos como anclajes, etiquetas como coordenadas, números y marcas como evidencia de un sistema. El texto aparece **mínimo**, como si fuera un instrumento de medición en un laboratorio imaginario; nunca explica, solo nombra. Las decisiones tipográficas deben mostrar **dominio absoluto**: interletraje, peso y alineación refinados hasta parecer el producto de **innumerables horas**.
+
+El equilibrio final vive en la dualidad: claridad y sombra, calor y calma, densidad y aire. La obra se lee como un mapa: signos repetidos, referencias discretas, patrones que insinúan método. Todo debe quedar dentro de márgenes impecables; ninguna pieza flota por descuido. La ejecución tiene que ser **de nivel museo**, **meticulosamente crafted**, demostrando un oficio donde cada elemento fue colocado con **atención minuciosa** y criterio infalible.
