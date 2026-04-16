@@ -8,7 +8,12 @@ from fastapi.responses import FileResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import (
+    get_current_user,
+    require_attachment_access,
+    require_project_access,
+    require_task_access,
+)
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.attachment import Attachment
@@ -25,8 +30,9 @@ MAX_BYTES = 100 * 1024 * 1024
 def list_attachments(
     task_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[Attachment]:
+    require_task_access(db=db, user=user, task_id=task_id)
     return list(db.scalars(select(Attachment).where(Attachment.task_id == task_id).order_by(Attachment.created_at.desc())))
 
 
@@ -40,6 +46,8 @@ def upload_attachment(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    require_project_access(db=db, user=user, project_id=task.project_id)
 
     storage_key = f"{task_id}/{uuid.uuid4()}"
     abs_dir = os.path.join(settings.uploads_dir, task_id)
@@ -93,11 +101,9 @@ def upload_attachment(
 def download_attachment(
     attachment_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> FileResponse:
-    att = db.get(Attachment, attachment_id)
-    if att is None:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+    att = require_attachment_access(db=db, user=user, attachment_id=attachment_id)
 
     abs_path = os.path.join(settings.uploads_dir, att.storage_key)
     if not os.path.exists(abs_path):
@@ -116,9 +122,7 @@ def delete_attachment(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict:
-    att = db.get(Attachment, attachment_id)
-    if att is None:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+    att = require_attachment_access(db=db, user=user, attachment_id=attachment_id)
 
     task = db.get(Task, att.task_id)
     project_id = task.project_id if task else None

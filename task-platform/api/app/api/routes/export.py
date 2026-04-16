@@ -7,7 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.attachment import Attachment
 from app.models.audit_log import AuditLog
@@ -22,7 +22,8 @@ router = APIRouter(prefix="/export", tags=["export"])
 
 
 @router.get("")
-def export_json(db: Session = Depends(get_db), _user=Depends(get_current_user)) -> dict:
+def export_json(db: Session = Depends(get_db), user=Depends(get_current_user)) -> dict:
+    require_admin(user)
     projects = list(db.scalars(select(Project)))
     releases = list(db.scalars(select(Release)))
     tasks = list(db.scalars(select(Task)))

@@ -4,7 +4,11 @@ Este documento recoge ideas de mejora basadas en el estado actual del repo (Fast
 
 ## 1) Multiusuario real + distinción Admin vs Usuario
 
-### Roles y flujo
+**Estado:** ✅ Implementado (2026-04-16)
+
+Incluye: `/auth/me`, `/auth/change-password`, endpoints `/admin/users*`, asignación `user_projects`, y enforcement de permisos (proyectos/releases solo admin; usuarios ven solo proyectos asignados; `/export` solo admin).
+
+### Roles, acceso y flujo
 - **Mantener `users.is_admin`** (ya existe) como flag de rol.
 - Añadir endpoint **`GET /auth/me`** que devuelva `{ id, email, is_admin, is_active }` para que el frontend pueda decidir navegación.
 - Ajustar frontend: tras `login()` y tras `tryRestoreSession()` → llamar a `/auth/me`.
@@ -12,31 +16,59 @@ Este documento recoge ideas de mejora basadas en el estado actual del repo (Fast
   - Si `is_admin=true` → ir a `/admin` (panel de administración).
   - Si `is_admin=false` → ir a la app normal (proyectos/tablero).
 
-### Gestión de usuarios (solo admin)
+### Acceso a proyectos por usuario (asignación desde Admin)
+- Cada usuario **no admin** solo puede ver/consultar los **proyectos que tenga asignados** desde el panel de administración.
+- Si un usuario no tiene proyectos asignados → UI con estado vacío (“No tienes proyectos asignados”) y acción sugerida (“Contacta con un admin”).
+- Backend:
+  - Filtrar `GET /projects` por proyectos asignados al usuario.
+  - En rutas con `project_id` (proyectos, releases, tareas, adjuntos, export por proyecto) validar que el usuario tiene acceso al proyecto.
+
+### Permisos por rol (propuesta MVP)
+- **Admin**:
+  - Gestión de usuarios (roles/estado), **asignación/reasignación de proyectos**, creación/borrado/edición de proyectos y **versiones (releases)**.
+  - Acceso al panel de métricas/overview (global y por proyecto).
+- **Usuario**:
+  - Solo puede ver proyectos/versions asignados.
+  - Puede **seleccionar versiones** para ver tareas e **interactuar con tareas** (crear/editar, cambiar estado/prioridad, adjuntar evidencias) dentro de proyectos asignados.
+  - **No puede crear** proyectos ni **versiones (releases)**.
+
+### Gestión de usuarios y asignaciones (solo admin)
 - Endpoints API (propuestos):
   - `GET /admin/users` (lista, filtros por activo/admin)
   - `POST /admin/users` (crear: email + password + is_admin)
   - `PATCH /admin/users/{id}` (activar/desactivar, promover a admin, etc.)
   - `POST /admin/users/{id}/reset-password` (reset a password temporal o establecer nueva)
   - `DELETE /admin/users/{id}` (o soft-delete: `is_active=false`)
-- Dependencia backend: `require_admin(current_user)` para proteger rutas.
+  - `GET /admin/users/{id}/projects` (ver proyectos asignados)
+  - `PUT /admin/users/{id}/projects` (reemplazar asignación completa) o `POST`/`DELETE` para asignar/desasignar
+- Dependencia backend: `require_admin(current_user)` para proteger rutas + helper `require_project_access(current_user, project_id)`.
 
 ### Cambios de contraseña (self-service)
 - Endpoint: `POST /auth/change-password` (requiere access token; valida contraseña actual).
 
 ## 2) Panel de administración (UI)
 
+### Objetivo
+Panel dedicado a **administración, gestión y overview de métricas** por proyecto.
+
 ### Secciones
 - **Usuarios**
   - Tabla con email, rol (admin/normal), estado (activo/inactivo), acciones.
   - Crear usuario (modal), desactivar, reset contraseña, cambiar rol.
-- **Estadísticas (por proyecto)**
+- **Proyectos (gestión + asignaciones)**
+  - Crear/borrar/editar proyectos (solo admin).
+  - Asignar y desasignar proyectos a usuarios (y reasignar en bloque).
+  - Vista “Quién tiene acceso a este proyecto” + búsqueda por usuario.
+- **Versiones / Releases (solo admin)**
+  - Crear/renombrar/borrar versiones de un proyecto.
+  - Los usuarios no admin **no crean** versiones, pero sí pueden **seleccionarlas** para consumir el tablero/listado de tareas.
+- **Estadísticas (overview global y por proyecto)**
   - Resumen por proyecto: #tareas por estado/prioridad, backlog vs release, vencidas, sin vencimiento.
   - Actividad reciente: conteo de eventos audit por proyecto (usa `audit_logs`).
   - Adjuntos: #adjuntos y total `size_bytes` por proyecto.
 
 ### Enrutado
-- SPA routes (ejemplo): `/admin`, `/admin/users`, `/admin/stats`.
+- SPA routes (ejemplo): `/admin`, `/admin/users`, `/admin/projects`, `/admin/stats`.
 - Guardas:
   - si no autenticado → login.
   - si autenticado pero no admin → 403 UI/volver a proyectos.
@@ -54,6 +86,10 @@ Este documento recoge ideas de mejora basadas en el estado actual del repo (Fast
 ## 4) Modelo de datos y ownership (para multiusuario)
 
 Si se quiere pasar de “single-user MVP” a multiusuario real:
+- Añadir tabla de relación **`user_projects`** (o `project_memberships`):
+  - Campos típicos: `user_id`, `project_id` (y opcional `role` dentro del proyecto).
+  - `UNIQUE(user_id, project_id)` + índices por `user_id` y `project_id`.
+  - Esta tabla es la base para: “cada usuario solo ve los proyectos asignados desde Admin”.
 - Añadir `created_by`, `updated_by` y/o `owner_user_id` en Project/Task/Attachment.
 - En `audit_logs.actor_user_id` ya se registra actor; aprovechar para trazabilidad.
 

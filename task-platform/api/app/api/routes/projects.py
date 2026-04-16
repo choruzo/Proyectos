@@ -7,12 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.attachment import Attachment
 from app.models.project import Project
 from app.models.task import Task
+from app.models.user_project import UserProject
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services.audit import log_event
 
@@ -20,8 +21,17 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.get("", response_model=list[ProjectOut])
-def list_projects(db: Session = Depends(get_db), _user=Depends(get_current_user)) -> list[Project]:
-    return list(db.scalars(select(Project).order_by(Project.name)))
+def list_projects(db: Session = Depends(get_db), user=Depends(get_current_user)) -> list[Project]:
+    if user.is_admin:
+        stmt = select(Project).order_by(Project.name)
+    else:
+        stmt = (
+            select(Project)
+            .join(UserProject, UserProject.project_id == Project.id)
+            .where(UserProject.user_id == user.id)
+            .order_by(Project.name)
+        )
+    return list(db.scalars(stmt))
 
 
 @router.post("", response_model=ProjectOut)
@@ -30,6 +40,7 @@ def create_project(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> Project:
+    require_admin(user)
     exists = db.scalar(select(Project).where(Project.name == payload.name))
     if exists is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project name already exists")
@@ -61,6 +72,7 @@ def update_project(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> Project:
+    require_admin(user)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -103,6 +115,7 @@ def delete_project(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict:
+    require_admin(user)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")

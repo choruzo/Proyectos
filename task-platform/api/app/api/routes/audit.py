@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project_access, require_task_access
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
 from app.schemas.audit import AuditLogOut
@@ -35,8 +35,9 @@ def list_task_audit(
     task_id: str,
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[AuditLogOut]:
+    require_task_access(db=db, user=user, task_id=task_id)
     stmt = select(AuditLog).where(AuditLog.task_id == task_id).order_by(AuditLog.created_at.desc()).limit(limit)
     return [_to_out(r) for r in db.scalars(stmt)]
 
@@ -46,7 +47,8 @@ def list_project_audit(
     project_id: str,
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[AuditLogOut]:
+    require_project_access(db=db, user=user, project_id=project_id)
     stmt = select(AuditLog).where(AuditLog.project_id == project_id).order_by(AuditLog.created_at.desc()).limit(limit)
     return [_to_out(r) for r in db.scalars(stmt)]

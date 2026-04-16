@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project_access
 from app.db.session import get_db
 from app.models.tag import Tag
 from app.models.task import Task
@@ -18,8 +18,9 @@ def suggest_tags(
     project_id: str,
     limit: int = 20,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[str]:
+    require_project_access(db=db, user=user, project_id=project_id)
     stmt = (
         select(Tag.name, func.count(Tag.id).label("cnt"))
         .join(TaskTag, TaskTag.tag_id == Tag.id)

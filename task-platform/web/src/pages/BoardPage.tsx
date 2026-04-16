@@ -73,7 +73,7 @@ function parseTags(text: string): string[] {
   return out
 }
 
-export function BoardPage({ project }: { project: Project }) {
+export function BoardPage({ project, isAdmin }: { project: Project; isAdmin: boolean }) {
   const storageKey = `tp-board:${project.id}`
 
   const viewOptions: TpOption[] = [
@@ -417,18 +417,22 @@ export function BoardPage({ project }: { project: Project }) {
           ]}
           onChange={(v) => setReleaseId(v)}
         />
-        <button type="button" onClick={() => setReleaseEditorOpen(true)} disabled={releaseId === 'backlog'}>
-          Editar versión
-        </button>
+        {isAdmin ? (
+          <button type="button" onClick={() => setReleaseEditorOpen(true)} disabled={releaseId === 'backlog'}>
+            Editar versión
+          </button>
+        ) : null}
 
-        <form onSubmit={createRelease} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            value={newReleaseName}
-            onChange={(e) => setNewReleaseName(e.target.value)}
-            placeholder="Nueva versión"
-          />
-          <button type="submit" className="tp-btn--primary">Crear versión</button>
-        </form>
+        {isAdmin ? (
+          <form onSubmit={createRelease} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={newReleaseName}
+              onChange={(e) => setNewReleaseName(e.target.value)}
+              placeholder="Nueva versión"
+            />
+            <button type="submit" className="tp-btn--primary">Crear versión</button>
+          </form>
+        ) : null}
 
         <form onSubmit={createTask} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Nueva tarea" />
@@ -482,7 +486,7 @@ export function BoardPage({ project }: { project: Project }) {
         <TaskList tasks={tasks} onOpenTask={openTask} />
       )}
 
-      {releaseEditorOpen && currentRelease() && (
+      {isAdmin && releaseEditorOpen && currentRelease() && (
         <ReleaseModal
           release={currentRelease()!}
           onClose={() => setReleaseEditorOpen(false)}

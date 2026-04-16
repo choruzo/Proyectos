@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project_access
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.saved_view import SavedView
@@ -32,8 +32,9 @@ def _to_out(row: SavedView) -> SavedViewOut:
 def list_views(
     project_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[SavedViewOut]:
+    require_project_access(db=db, user=user, project_id=project_id)
     stmt = select(SavedView).where(SavedView.project_id == project_id).order_by(SavedView.name)
     return [_to_out(v) for v in db.scalars(stmt)]
 
@@ -45,6 +46,7 @@ def create_view(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> SavedViewOut:
+    require_project_access(db=db, user=user, project_id=project_id)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -87,6 +89,7 @@ def update_view(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> SavedViewOut:
+    require_project_access(db=db, user=user, project_id=project_id)
     view = db.get(SavedView, view_id)
     if view is None or view.project_id != project_id:
         raise HTTPException(status_code=404, detail="View not found")
@@ -141,6 +144,7 @@ def delete_view(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict:
+    require_project_access(db=db, user=user, project_id=project_id)
     view = db.get(SavedView, view_id)
     if view is None or view.project_id != project_id:
         raise HTTPException(status_code=404, detail="View not found")

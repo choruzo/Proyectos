@@ -7,6 +7,7 @@ from app.models.tag import Tag
 from app.models.task import Task
 from app.models.task_tag import TaskTag
 from app.models.user import User
+from app.models.user_project import UserProject
 
 __all__ = [
     "Attachment",
@@ -18,4 +19,5 @@ __all__ = [
     "Task",
     "TaskTag",
     "User",
+    "UserProject",
 ]

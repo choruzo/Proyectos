@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin, require_project_access
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.release import Release
@@ -18,8 +18,9 @@ router = APIRouter(prefix="/projects/{project_id}/releases", tags=["releases"])
 def list_releases(
     project_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[Release]:
+    require_project_access(db=db, user=user, project_id=project_id)
     return list(db.scalars(select(Release).where(Release.project_id == project_id).order_by(Release.name)))
 
 
@@ -30,6 +31,8 @@ def create_release(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> Release:
+    require_admin(user)
+    require_project_access(db=db, user=user, project_id=project_id)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -62,6 +65,8 @@ def update_release(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> Release:
+    require_admin(user)
+    require_project_access(db=db, user=user, project_id=project_id)
     rel = db.get(Release, release_id)
     if rel is None or rel.project_id != project_id:
         raise HTTPException(status_code=404, detail="Release not found")
@@ -99,6 +104,8 @@ def delete_release(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict:
+    require_admin(user)
+    require_project_access(db=db, user=user, project_id=project_id)
     rel = db.get(Release, release_id)
     if rel is None or rel.project_id != project_id:
         raise HTTPException(status_code=404, detail="Release not found")

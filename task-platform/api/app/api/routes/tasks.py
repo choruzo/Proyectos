@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, delete, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project_access
 from app.core.constants import TASK_PRIORITIES, TASK_STATUSES
 from app.db.session import get_db
 from app.models.attachment import Attachment
+from app.models.release import Release
 from app.models.tag import Tag
 from app.models.task import Task
 from app.models.task_tag import TaskTag
@@ -62,9 +63,14 @@ def list_tasks(
     tag: str | None = None,
     q: str | None = Query(default=None, min_length=1),
     db: Session = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> list[TaskOut]:
     stmt = select(Task)
+
+    if not user.is_admin:
+        if not project_id:
+            raise HTTPException(status_code=400, detail="project_id is required")
+        require_project_access(db=db, user=user, project_id=project_id)
 
     if project_id:
         stmt = stmt.where(Task.project_id == project_id)
@@ -110,6 +116,13 @@ def create_task(
     if payload.priority not in TASK_PRIORITIES:
         raise HTTPException(status_code=400, detail="Invalid priority")
 
+    require_project_access(db=db, user=user, project_id=payload.project_id)
+
+    if payload.release_id is not None:
+        rel = db.get(Release, payload.release_id)
+        if rel is None or rel.project_id != payload.project_id:
+            raise HTTPException(status_code=400, detail="Invalid release_id")
+
     task = Task(**payload.model_dump(exclude={"tags"}))
     db.add(task)
     db.flush()
@@ -154,9 +167,16 @@ def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    require_project_access(db=db, user=user, project_id=task.project_id)
+
     before = _task_snapshot(db, task)
 
     data = payload.model_dump(exclude_unset=True)
+
+    if "release_id" in data and data["release_id"] is not None:
+        rel = db.get(Release, data["release_id"])
+        if rel is None or rel.project_id != task.project_id:
+            raise HTTPException(status_code=400, detail="Invalid release_id")
 
     if "status" in data and data["status"] not in TASK_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -213,6 +233,8 @@ def delete_task(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    require_project_access(db=db, user=user, project_id=task.project_id)
 
     before = _task_snapshot(db, task)
 

@@ -5,7 +5,15 @@ import { BoardPage } from './BoardPage'
 
 type Project = { id: string; name: string; description?: string | null }
 
-export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
+export function ProjectsPage({
+  onLogout,
+  isAdmin,
+  onGoAdmin,
+}: {
+  onLogout: () => void
+  isAdmin: boolean
+  onGoAdmin?: () => void
+}) {
   const [projects, setProjects] = useState<Project[]>([])
   const [selected, setSelected] = useState<Project | null>(null)
   const [name, setName] = useState('')
@@ -132,7 +140,10 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        <ThemeToggle />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {isAdmin && onGoAdmin ? <button onClick={onGoAdmin}>Administración</button> : null}
+          <ThemeToggle />
+        </div>
       </div>
 
       <div className={`tp-layout ${sidebarOpen ? 'tp-layout--sidebar-open' : 'tp-layout--sidebar-collapsed'}`}>
@@ -151,14 +162,21 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
               <span aria-hidden="true">×</span>
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nuevo proyecto" />
-            <button className="tp-btn--primary" onClick={createProject}>
-              +
-            </button>
-          </div>
+          {isAdmin ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nuevo proyecto" />
+              <button className="tp-btn--primary" onClick={createProject}>
+                +
+              </button>
+            </div>
+          ) : null}
 
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {projects.length === 0 ? (
+              <div className="tp-muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                No tienes proyectos asignados
+              </div>
+            ) : null}
             {projects.map((p) => (
               <button
                 key={p.id}
@@ -184,7 +202,7 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button onClick={exportJson}>Exportar JSON</button>
+            {isAdmin ? <button onClick={exportJson}>Exportar JSON</button> : null}
             <button onClick={logout}>Salir</button>
           </div>
         </div>
@@ -197,7 +215,12 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, maxWidth: 820 }}>
                   <div>
                     <label>Nombre</label>
-                    <input style={{ width: '100%' }} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                    <input
+                      style={{ width: '100%' }}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      disabled={!isAdmin}
+                    />
                   </div>
                   <div>
                     <label>Descripción</label>
@@ -205,20 +228,23 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
                       style={{ width: '100%', minHeight: 90 }}
                       value={editDesc}
                       onChange={(e) => setEditDesc(e.target.value)}
+                      disabled={!isAdmin}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button className="tp-btn--primary" onClick={saveProject}>
-                      Guardar proyecto
-                    </button>
-                    <button className="tp-btn--danger" onClick={deleteProject}>
-                      Borrar proyecto
-                    </button>
-                  </div>
+                  {isAdmin ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="tp-btn--primary" onClick={saveProject}>
+                        Guardar proyecto
+                      </button>
+                      <button className="tp-btn--danger" onClick={deleteProject}>
+                        Borrar proyecto
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
-              <BoardPage project={selected} />
+              <BoardPage project={selected} isAdmin={isAdmin} />
             </div>
           ) : (
             <div className="tp-panel" style={{ padding: 16 }}>
