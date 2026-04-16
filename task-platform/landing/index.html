@@ -299,6 +299,83 @@
     .install-block .comment { color: var(--muted); }
     .install-block .cmd { color: var(--accent); }
 
+    /* ── Demo section ──────────────────────────────────── */
+    .demo-tab-list {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .demo-tab {
+      font: inherit; font-size: 13px;
+      font-family: var(--font-mono); letter-spacing: .05em; text-transform: uppercase;
+      padding: 8px 16px; border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--muted);
+      cursor: pointer;
+      transition: background 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease);
+    }
+    .demo-tab:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--text); }
+    .demo-tab.active {
+      background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+      border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+      color: var(--accent);
+    }
+    .demo-panel { display: none; }
+    .demo-panel.active { display: block; }
+    .demo-video-wrap {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-1), 0 40px 80px rgba(0,0,0,.18);
+      background: var(--bg1);
+      position: relative;
+      aspect-ratio: 16/9;
+    }
+    .demo-video-wrap video {
+      width: 100%; height: 100%;
+      display: block; object-fit: cover;
+    }
+    .demo-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted);
+      font-family: var(--font-mono); font-size: 12px;
+      letter-spacing: .06em; text-transform: uppercase;
+      pointer-events: none;
+    }
+    .demo-placeholder-icon { font-size: 48px; opacity: .35; }
+    .demo-placeholder { display: flex; }
+    .demo-caption {
+      margin-top: 14px;
+      font-size: 14px; color: var(--muted); line-height: 1.55;
+      text-align: center;
+    }
+    .demo-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px; margin-top: 32px;
+    }
+    .demo-step {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 14px 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 13px; color: var(--muted); line-height: 1.45;
+    }
+    .demo-step-num {
+      flex-shrink: 0; width: 22px; height: 22px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+      color: var(--accent); font-family: var(--font-mono);
+      font-size: 11px; display: flex; align-items: center; justify-content: center;
+      font-weight: 700;
+    }
+    @media (max-width: 640px) {
+      .demo-tab { font-size: 11px; padding: 7px 12px; }
+      .demo-steps { grid-template-columns: 1fr 1fr; }
+    }
+
     /* ── Footer ─────────────────────────────────────────── */
     .footer {
       border-top: 1px solid var(--border);
@@ -311,13 +388,97 @@
     .footer-links a { font-size: 13px; color: var(--muted); }
     .footer-links a:hover { color: var(--accent); text-decoration: none; }
 
+    /* ── Hamburger menu ─────────────────────────────────── */
+    .nav-links { display: flex; align-items: center; gap: 10px; }
+    .hamburger {
+      display: none;
+      flex-direction: column; justify-content: center; gap: 5px;
+      width: 40px; height: 40px; padding: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); cursor: pointer;
+      box-shadow: var(--shadow-2);
+    }
+    .hamburger span {
+      display: block; width: 100%; height: 2px;
+      background: var(--text); border-radius: 2px;
+      transition: all 200ms var(--ease);
+    }
+    .mobile-menu {
+      display: none;
+      position: fixed; inset: 0; z-index: 200;
+      background: color-mix(in srgb, var(--bg0) 97%, transparent);
+      backdrop-filter: blur(16px);
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; padding: 32px;
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a, .mobile-menu button.btn {
+      width: 100%; max-width: 320px; text-align: center;
+      justify-content: center; font-size: 18px; padding: 16px;
+    }
+    .mobile-close {
+      position: absolute; top: 20px; right: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 8px 14px;
+      font-size: 18px; cursor: pointer; color: var(--text);
+    }
+
     /* ── Responsive ─────────────────────────────────────── */
-    @media (max-width: 768px) {
-      .split { grid-template-columns: 1fr; gap: 32px; padding: 48px 0; }
+    @media (max-width: 860px) {
+      .split { grid-template-columns: 1fr; gap: 28px; padding: 52px 0; }
       .split.reverse .split-img { order: 0; }
-      .hero { padding: 52px 0 44px; }
-      .section { padding: 52px 0; }
-      .partner-box { padding: 36px 24px; }
+    }
+
+    @media (max-width: 640px) {
+      /* Topbar */
+      .nav-links { display: none; }
+      .hamburger { display: flex; }
+      .topbar { padding: 12px 0; }
+      .brand h1 { font-size: 17px; }
+
+      /* Layout */
+      .container { padding: 0 16px; }
+      .hero { padding: 44px 0 36px; }
+      .hero p { font-size: 16px; }
+      .hero-cta { flex-direction: column; align-items: center; }
+      .hero-cta .btn { width: 100%; max-width: 320px; justify-content: center; }
+
+      /* Screenshot */
+      .screenshot-wrap { padding: 0 16px 52px; }
+
+      /* Sections */
+      .section { padding: 48px 0; }
+      .section h2 { font-size: 26px; }
+      .split { padding: 40px 0; gap: 24px; }
+      .split-text h2 { font-size: 22px; }
+      .split-text p { font-size: 15px; }
+
+      /* Features */
+      .features-grid { grid-template-columns: 1fr; gap: 12px; }
+      .feature-card { padding: 20px; }
+
+      /* ROI banner */
+      .roi-banner { padding: 28px 20px; }
+      .roi-banner h2 { font-size: 18px; }
+      .roi-banner p { font-size: 15px; }
+
+      /* Install block */
+      .install-block { font-size: 12px; padding: 16px; overflow-x: auto; white-space: pre; }
+
+      /* Pricing */
+      .pricing-grid { grid-template-columns: 1fr; }
+      .price-card { padding: 22px 18px; }
+      .price-amount { font-size: 30px; }
+
+      /* Partner */
+      .partner-box { padding: 32px 20px; }
+      .partner-box h2 { font-size: 22px; }
+      .partner-box p { font-size: 15px; }
+      .partner-box .cta-group { flex-direction: column; align-items: center; }
+      .partner-box .cta-group .btn { width: 100%; max-width: 320px; justify-content: center; }
+
+      /* Footer */
+      .footer-links { flex-direction: column; gap: 10px; }
     }
   </style>
 </head>
@@ -331,16 +492,35 @@
       <small>Duna Serena</small>
     </div>
     <nav class="topbar-right">
-      <a href="#funcionalidades" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Funcionalidades</a>
-      <a href="#precios" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Precios</a>
-      <a href="#contacto" class="btn btn-primary" style="padding:8px 16px;font-size:14px;">Contactar</a>
-      <button class="toggle-btn" onclick="toggleTheme()" aria-label="Cambiar tema">
-        <div class="toggle-track"><div class="toggle-knob"></div></div>
-        <span id="theme-label">CLARO</span>
+      <div class="nav-links">
+        <a href="#funcionalidades" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Funcionalidades</a>
+        <a href="#demo" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Demo</a>
+        <a href="#precios" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Precios</a>
+        <a href="#contacto" class="btn btn-primary" style="padding:8px 16px;font-size:14px;">Contactar</a>
+        <button class="toggle-btn" onclick="toggleTheme()" aria-label="Cambiar tema">
+          <div class="toggle-track"><div class="toggle-knob"></div></div>
+          <span id="theme-label">CLARO</span>
+        </button>
+      </div>
+      <button class="hamburger" onclick="openMenu()" aria-label="Abrir menú">
+        <span></span><span></span><span></span>
       </button>
     </nav>
   </div>
 </header>
+
+<!-- ── MOBILE MENU ─────────────────────────────────────────── -->
+<div class="mobile-menu" id="mobile-menu">
+  <button class="mobile-close" onclick="closeMenu()">✕</button>
+  <a href="#funcionalidades" class="btn btn-ghost" onclick="closeMenu()">Funcionalidades</a>
+  <a href="#demo" class="btn btn-ghost" onclick="closeMenu()">Demo</a>
+  <a href="#precios" class="btn btn-ghost" onclick="closeMenu()">Precios</a>
+  <a href="#contacto" class="btn btn-primary" onclick="closeMenu()">Contactar →</a>
+  <button class="toggle-btn" onclick="toggleTheme()" style="width:100%;max-width:320px;justify-content:center;">
+    <div class="toggle-track"><div class="toggle-knob"></div></div>
+    <span id="theme-label-mobile">CLARO</span>
+  </button>
+</div>
 
 <!-- ── HERO ────────────────────────────────────────────────── -->
 <section class="hero">
@@ -361,6 +541,102 @@
     <img src="assets/kanban-dark.png" alt="Vista Kanban de Task Platform" id="hero-screenshot" loading="lazy" />
   </div>
 </div>
+
+<!-- ── DEMO ─────────────────────────────────────────────────── -->
+<section class="section" id="demo">
+  <div class="container">
+    <div class="mono section-label">Demo en vivo</div>
+    <h2>Ve la plataforma en acción</h2>
+    <p>Clips cortos de cada funcionalidad. Sin registro ni instalación previa.</p>
+
+    <div class="demo-tab-list" role="tablist" aria-label="Secciones del demo">
+      <button class="demo-tab active" role="tab" onclick="showDemo('login',this)">① Login</button>
+      <button class="demo-tab" role="tab" onclick="showDemo('kanban',this)">② Kanban</button>
+      <button class="demo-tab" role="tab" onclick="showDemo('task',this)">③ Detalle de tarea</button>
+      <button class="demo-tab" role="tab" onclick="showDemo('lista',this)">④ Vista Lista</button>
+      <button class="demo-tab" role="tab" onclick="showDemo('admin',this)">⑤ Administración</button>
+    </div>
+
+    <!-- Panel: Login -->
+    <div class="demo-panel active" id="demo-login">
+      <div class="demo-video-wrap">
+        <video autoplay loop muted playsinline preload="metadata" id="video-login">
+          <source src="assets/demo-login.mp4" type="video/mp4">
+        </video>
+        <div class="demo-placeholder">
+          <div class="demo-placeholder-icon">▶</div>
+          <span>Próximamente — demo-login.mp4</span>
+        </div>
+      </div>
+      <p class="demo-caption">Login con email y contraseña. Access token en memoria, refresh token como cookie httpOnly. Sin localStorage.</p>
+    </div>
+
+    <!-- Panel: Kanban -->
+    <div class="demo-panel" id="demo-kanban">
+      <div class="demo-video-wrap">
+        <video autoplay loop muted playsinline preload="metadata" id="video-kanban">
+          <source src="assets/demo-kanban.mp4" type="video/mp4">
+        </video>
+        <div class="demo-placeholder">
+          <div class="demo-placeholder-icon">▶</div>
+          <span>Próximamente — demo-kanban.mp4</span>
+        </div>
+      </div>
+      <p class="demo-caption">Vista Kanban con cuatro columnas. Filtros simultáneos por estado, prioridad y etiqueta. Selector de versión integrado.</p>
+    </div>
+
+    <!-- Panel: Detalle de tarea -->
+    <div class="demo-panel" id="demo-task">
+      <div class="demo-video-wrap">
+        <video autoplay loop muted playsinline preload="metadata" id="video-task">
+          <source src="assets/demo-task.mp4" type="video/mp4">
+        </video>
+        <div class="demo-placeholder">
+          <div class="demo-placeholder-icon">▶</div>
+          <span>Próximamente — demo-task.mp4</span>
+        </div>
+      </div>
+      <p class="demo-caption">Creación y edición de tareas. Adjuntos hasta 100 MB, historial de auditoría completo con before/after de cada cambio.</p>
+    </div>
+
+    <!-- Panel: Vista Lista -->
+    <div class="demo-panel" id="demo-lista">
+      <div class="demo-video-wrap">
+        <video autoplay loop muted playsinline preload="metadata" id="video-lista">
+          <source src="assets/demo-lista.mp4" type="video/mp4">
+        </video>
+        <div class="demo-placeholder">
+          <div class="demo-placeholder-icon">▶</div>
+          <span>Próximamente — demo-lista.mp4</span>
+        </div>
+      </div>
+      <p class="demo-caption">Vista tabla/lista con título, estado, prioridad, fechas, estimación y etiquetas en una fila. Vistas guardadas como presets.</p>
+    </div>
+
+    <!-- Panel: Administración -->
+    <div class="demo-panel" id="demo-admin">
+      <div class="demo-video-wrap">
+        <video autoplay loop muted playsinline preload="metadata" id="video-admin">
+          <source src="assets/demo-admin.mp4" type="video/mp4">
+        </video>
+        <div class="demo-placeholder">
+          <div class="demo-placeholder-icon">▶</div>
+          <span>Próximamente — demo-admin.mp4</span>
+        </div>
+      </div>
+      <p class="demo-caption">Panel de admin: gestión de usuarios y proyectos, asignación de accesos, estadísticas globales y exportación JSON.</p>
+    </div>
+
+    <!-- Guía de qué grabar -->
+    <div class="demo-steps">
+      <div class="demo-step"><div class="demo-step-num">1</div><span>Login y navegación inicial entre proyectos</span></div>
+      <div class="demo-step"><div class="demo-step-num">2</div><span>Crear tarea, asignar prioridad y etiqueta en Kanban</span></div>
+      <div class="demo-step"><div class="demo-step-num">3</div><span>Abrir detalle, subir adjunto, ver auditoría</span></div>
+      <div class="demo-step"><div class="demo-step-num">4</div><span>Cambiar a Vista Lista y guardar preset de filtros</span></div>
+      <div class="demo-step"><div class="demo-step-num">5</div><span>Panel admin: crear usuario, asignar proyecto, ver stats</span></div>
+    </div>
+  </div>
+</section>
 
 <!-- ── ROI BANNER ──────────────────────────────────────────── -->
 <div class="container">
@@ -624,17 +900,48 @@
 </footer>
 
 <script>
+  function showDemo(id, btn) {
+    document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('demo-' + id).classList.add('active');
+    btn.classList.add('active');
+    const v = document.getElementById('video-' + id);
+    if (v) { v.load(); v.play().catch(() => {}); }
+  }
+
   function toggleTheme() {
     const root = document.documentElement;
     const isDark = root.getAttribute('data-theme') === 'dark';
     root.setAttribute('data-theme', isDark ? 'light' : 'dark');
-    document.getElementById('theme-label').textContent = isDark ? 'OSCURO' : 'CLARO';
-    // Swap hero screenshot
-    const img = document.getElementById('hero-screenshot');
-    img.src = isDark ? 'assets/kanban-light.png' : 'assets/kanban-dark.png';
+    const label = isDark ? 'OSCURO' : 'CLARO';
+    document.getElementById('theme-label').textContent = label;
+    const ml = document.getElementById('theme-label-mobile');
+    if (ml) ml.textContent = label;
+    document.getElementById('hero-screenshot').src = isDark ? 'assets/kanban-light.png' : 'assets/kanban-dark.png';
   }
-  // Init label
+
+  function openMenu() {
+    document.getElementById('mobile-menu').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMenu() {
+    document.getElementById('mobile-menu').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
   document.getElementById('theme-label').textContent = 'CLARO';
+
+  document.querySelectorAll('.demo-video-wrap video').forEach(function(v) {
+    v.addEventListener('loadeddata', function() {
+      var ph = v.parentElement.querySelector('.demo-placeholder');
+      if (ph) ph.style.display = 'none';
+    });
+    if (v.readyState >= 2) {
+      var ph = v.parentElement.querySelector('.demo-placeholder');
+      if (ph) ph.style.display = 'none';
+    }
+  });
 </script>
 </body>
 </html>
