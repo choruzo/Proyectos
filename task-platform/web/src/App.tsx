@@ -9,6 +9,12 @@ export function App() {
   const [authed, setAuthed] = useState(false)
 
   useEffect(() => {
+    const onUnauthorized = () => setAuthed(false)
+    window.addEventListener('tp:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('tp:unauthorized', onUnauthorized)
+  }, [])
+
+  useEffect(() => {
     ;(async () => {
       try {
         const ok = await tryRestoreSession()

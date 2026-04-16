@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { apiFetch, getApiUrl } from '../api/client'
+import { TpSelect, type TpOption } from '../components/TpSelect'
 
 type Project = { id: string; name: string }
 type Release = {
@@ -73,6 +74,13 @@ function parseTags(text: string): string[] {
 }
 
 export function BoardPage({ project }: { project: Project }) {
+  const storageKey = `tp-board:${project.id}`
+
+  const viewOptions: TpOption[] = [
+    { value: 'kanban', label: 'Kanban' },
+    { value: 'list', label: 'Lista' },
+  ]
+
   const [releases, setReleases] = useState<Release[]>([])
   const [releaseId, setReleaseId] = useState<string>('backlog')
   const [tasks, setTasks] = useState<Task[]>([])
@@ -85,6 +93,34 @@ export function BoardPage({ project }: { project: Project }) {
   const [priorityFilter, setPriorityFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (!raw) return
+      const s = JSON.parse(raw)
+      if (typeof s.releaseId === 'string') setReleaseId(s.releaseId)
+      if (s.viewMode === 'kanban' || s.viewMode === 'list') setViewMode(s.viewMode)
+      if (typeof s.q === 'string') setQ(s.q)
+      if (typeof s.statusFilter === 'string') setStatusFilter(s.statusFilter)
+      if (typeof s.priorityFilter === 'string') setPriorityFilter(s.priorityFilter)
+      if (typeof s.tagFilter === 'string') setTagFilter(s.tagFilter)
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({ releaseId, viewMode, q, statusFilter, priorityFilter, tagFilter }),
+      )
+    } catch {
+      // ignore
+    }
+  }, [storageKey, releaseId, viewMode, q, statusFilter, priorityFilter, tagFilter])
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -107,6 +143,11 @@ export function BoardPage({ project }: { project: Project }) {
     setTagSuggestions(sug)
     setViews(vs)
     if (viewId && !vs.find((x: any) => x.id === viewId)) setViewId('')
+
+    if (releaseId !== 'backlog' && !rels.find((r: any) => r.id === releaseId)) {
+      setReleaseId('backlog')
+      return
+    }
 
     const qs = new URLSearchParams({ project_id: project.id })
     if (releaseId === 'backlog') qs.set('backlog', 'true')
@@ -331,28 +372,27 @@ export function BoardPage({ project }: { project: Project }) {
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <label>Vista</label>
-        <select value={viewMode} onChange={(e) => setViewMode(e.target.value as ViewMode)}>
-          <option value="kanban">Kanban</option>
-          <option value="list">Lista</option>
-        </select>
+        <TpSelect
+          ariaLabel="Vista"
+          value={viewMode}
+          options={viewOptions}
+          onChange={(v) => setViewMode(v as ViewMode)}
+        />
 
         <label>Preset</label>
-        <select
+        <TpSelect
+          ariaLabel="Preset"
           value={viewId}
-          onChange={(e) => {
-            const id = e.target.value
+          options={[
+            { value: '', label: '(sin preset)' },
+            ...views.map((v) => ({ value: v.id, label: v.name })),
+          ]}
+          onChange={(id) => {
             setViewId(id)
             const v = views.find((x) => x.id === id)
             if (v) applyView(v)
           }}
-        >
-          <option value="">(sin preset)</option>
-          {views.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
-        </select>
+        />
         <input value={saveViewName} onChange={(e) => setSaveViewName(e.target.value)} placeholder="Nombre preset…" />
         <button type="button" className="tp-btn--primary" onClick={createView}>
           Guardar nuevo
@@ -368,14 +408,15 @@ export function BoardPage({ project }: { project: Project }) {
         </button>
 
         <label>Versión</label>
-        <select value={releaseId} onChange={(e) => setReleaseId(e.target.value)}>
-          <option value="backlog">Backlog (sin versión)</option>
-          {releases.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+        <TpSelect
+          ariaLabel="Versión"
+          value={releaseId}
+          options={[
+            { value: 'backlog', label: 'Backlog (sin versión)' },
+            ...releases.map((r) => ({ value: r.id, label: r.name })),
+          ]}
+          onChange={(v) => setReleaseId(v)}
+        />
         <button type="button" onClick={() => setReleaseEditorOpen(true)} disabled={releaseId === 'backlog'}>
           Editar versión
         </button>
@@ -396,23 +437,25 @@ export function BoardPage({ project }: { project: Project }) {
 
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" />
 
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">(Estado: todos)</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <TpSelect
+          ariaLabel="Estado"
+          value={statusFilter}
+          options={[
+            { value: '', label: '(Estado: todos)' },
+            ...STATUSES.map((s) => ({ value: s, label: s })),
+          ]}
+          onChange={(v) => setStatusFilter(v)}
+        />
 
-        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
-          <option value="">(Prioridad: todas)</option>
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+        <TpSelect
+          ariaLabel="Prioridad"
+          value={priorityFilter}
+          options={[
+            { value: '', label: '(Prioridad: todas)' },
+            ...PRIORITIES.map((p) => ({ value: p, label: p })),
+          ]}
+          onChange={(v) => setPriorityFilter(v)}
+        />
 
         <input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} placeholder="Tag…" />
 
@@ -422,16 +465,18 @@ export function BoardPage({ project }: { project: Project }) {
       </div>
 
       {viewMode === 'kanban' ? (
-        <div className="tp-kanbanGrid">
-          {STATUSES.map((s) => (
-            <KanbanColumn
-              key={s}
-              title={s}
-              tasks={byStatus[s]}
-              onDropTask={(id) => moveTask(id, s)}
-              onOpenTask={openTask}
-            />
-          ))}
+        <div className="tp-kanbanWrap">
+          <div className="tp-kanbanGrid">
+            {STATUSES.map((s) => (
+              <KanbanColumn
+                key={s}
+                title={s}
+                tasks={byStatus[s]}
+                onDropTask={(id) => moveTask(id, s)}
+                onOpenTask={openTask}
+              />
+            ))}
+          </div>
         </div>
       ) : (
         <TaskList tasks={tasks} onOpenTask={openTask} />
@@ -537,57 +582,66 @@ function ReleaseModal({
   return (
     <div className="tp-modalOverlay" onClick={onClose}>
       <div className="tp-panel tp-modal" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="tp-modalHeader">
           <h3 style={{ margin: 0 }}>Editar versión</h3>
           <button type="button" className="tp-btn--ghost" onClick={onClose}>
             Cerrar
           </button>
         </div>
 
-        <div className="tp-formGrid" style={{ marginTop: 12 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>Nombre</label>
-            <input style={{ width: '100%' }} value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="tp-modalBody">
+          <div className="tp-formGrid">
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Nombre</label>
+              <input style={{ width: '100%' }} value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <label>Inicio</label>
+              <input style={{ width: '100%' }} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div>
+              <label>Fin</label>
+              <input style={{ width: '100%' }} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Estado</label>
+              <TpSelect
+                ariaLabel="Estado de versión"
+                width="100%"
+                value={status}
+                options={[
+                  { value: 'planned', label: 'planned' },
+                  { value: 'in_progress', label: 'in_progress' },
+                  { value: 'closed', label: 'closed' },
+                ]}
+                onChange={(v) => setStatus(v)}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Nota</label>
+              <textarea style={{ width: '100%', minHeight: 120 }} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
           </div>
-          <div>
-            <label>Inicio</label>
-            <input style={{ width: '100%' }} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <label>Fin</label>
-            <input style={{ width: '100%' }} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>Estado</label>
-            <select style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="planned">planned</option>
-              <option value="in_progress">in_progress</option>
-              <option value="closed">closed</option>
-            </select>
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>Nota</label>
-            <textarea style={{ width: '100%', minHeight: 120 }} value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-        </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
-          <button className="tp-btn--danger" onClick={onDelete}>
-            Borrar versión
-          </button>
-          <button className="tp-btn--primary"
-            onClick={() =>
-              onSave({
-                name: name.trim() || release.name,
-                note: note.trim() ? note : null,
-                start_date: startDate || null,
-                end_date: endDate || null,
-                status,
-              })
-            }
-          >
-            Guardar
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+            <button className="tp-btn--danger" onClick={onDelete}>
+              Borrar versión
+            </button>
+            <button
+              className="tp-btn--primary"
+              onClick={() =>
+                onSave({
+                  name: name.trim() || release.name,
+                  note: note.trim() ? note : null,
+                  start_date: startDate || null,
+                  end_date: endDate || null,
+                  status,
+                })
+              }
+            >
+              Guardar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -625,6 +679,7 @@ function TaskModal({
   const [estimate, setEstimate] = useState(task.estimate_hours?.toString() ?? '')
   const [tagsText, setTagsText] = useState(tagsToText(task.tags ?? []))
   const [releaseSel, setReleaseSel] = useState<string>(task.release_id ?? 'backlog')
+  const [pickedFileName, setPickedFileName] = useState<string>('')
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -643,163 +698,189 @@ function TaskModal({
   return (
     <div className="tp-modalOverlay" onClick={onClose}>
       <div className="tp-panel tp-modal" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div className="tp-modalHeader">
           <h3 style={{ margin: 0 }}>Tarea</h3>
           <button type="button" className="tp-btn--ghost" onClick={onClose}>
             Cerrar
           </button>
         </div>
 
-        <div className="tp-formGrid" style={{ marginTop: 12 }}>
-          <div>
-            <label>Título</label>
-            <input style={{ width: '100%' }} value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <label>Versión</label>
-            <select style={{ width: '100%' }} value={releaseSel} onChange={(e) => setReleaseSel(e.target.value)}>
-              <option value="backlog">Backlog (sin versión)</option>
-              {releases.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>Estado</label>
-            <select style={{ width: '100%' }} value={status} onChange={(e) => setStatus(e.target.value as any)}>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Prioridad</label>
-            <select style={{ width: '100%' }} value={priority} onChange={(e) => setPriority(e.target.value as any)}>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>Vencimiento</label>
-            <input style={{ width: '100%' }} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </div>
-          <div>
-            <label>Estimación (horas)</label>
-            <input
-              style={{ width: '100%' }}
-              type="number"
-              step="0.25"
-              value={estimate}
-              onChange={(e) => setEstimate(e.target.value)}
-            />
-          </div>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>Descripción (Markdown)</label>
-            <textarea
-              style={{ width: '100%', minHeight: 120 }}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label>Tags (separadas por coma)</label>
-            <input style={{ width: '100%' }} value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
-            {tagSuggestions.length > 0 && (
-              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {tagSuggestions.slice(0, 12).map((t) => (
-                  <button key={t} type="button" className="tp-btn--ghost" onClick={() => addTag(t)} style={{ fontSize: 12 }}>
-                    + {t}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <div style={{ marginBottom: 8 }}>
-              <input type="file" onChange={(e) => e.target.files && onUploadAttachment(e.target.files[0])} />
+        <div className="tp-modalBody">
+          <div className="tp-formGrid">
+            <div>
+              <label>Título</label>
+              <input style={{ width: '100%' }} value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div>
-              <h4>Adjuntos</h4>
-              {attachments.length === 0 && <div>Sin adjuntos</div>}
-              <ul>
-                {attachments.map((a) => (
-                  <li key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <a href={`${getApiUrl()}/attachments/${a.id}/download`} target="_blank" rel="noreferrer">
-                      {a.original_name}
-                    </a>
-                    <button type="button" onClick={() => onDeleteAttachment(a.id)}>
-                      Borrar
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <label>Versión</label>
+              <TpSelect
+                ariaLabel="Versión de tarea"
+                width="100%"
+                value={releaseSel}
+                options={[
+                  { value: 'backlog', label: 'Backlog (sin versión)' },
+                  ...releases.map((r) => ({ value: r.id, label: r.name })),
+                ]}
+                onChange={(v) => setReleaseSel(v)}
+              />
             </div>
 
-            <div style={{ marginTop: 12 }}>
-              <h4>Historial</h4>
-              {auditLogs.length === 0 && <div>Sin eventos</div>}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {auditLogs.map((e) => (
-                  <details key={e.id} className="tp-card" style={{ padding: 10 }}>
-                    <summary style={{ cursor: 'pointer' }}>
-                      <span className="tp-kbd">{new Date(e.created_at).toLocaleString()}</span>
-                      {' · '}
-                      <span className="tp-kbd">{e.action}</span>
-                      {e.meta?.changed_fields ? ` · ${e.meta.changed_fields.join(', ')}` : ''}
-                    </summary>
-                    <pre
-                      className="tp-kbd"
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        marginTop: 8,
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 12,
-                        padding: 10,
-                        overflow: 'auto',
-                      }}
+            <div>
+              <label>Estado</label>
+              <TpSelect
+                ariaLabel="Estado de tarea"
+                width="100%"
+                value={status}
+                options={STATUSES.map((s) => ({ value: s, label: s }))}
+                onChange={(v) => setStatus(v as any)}
+              />
+            </div>
+            <div>
+              <label>Prioridad</label>
+              <TpSelect
+                ariaLabel="Prioridad de tarea"
+                width="100%"
+                value={priority}
+                options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+                onChange={(v) => setPriority(v as any)}
+              />
+            </div>
+
+            <div>
+              <label>Vencimiento</label>
+              <input style={{ width: '100%' }} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div>
+              <label>Estimación (horas)</label>
+              <input
+                style={{ width: '100%' }}
+                type="number"
+                step="0.25"
+                value={estimate}
+                onChange={(e) => setEstimate(e.target.value)}
+              />
+            </div>
+
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Descripción (Markdown)</label>
+              <textarea
+                style={{ width: '100%', minHeight: 120 }}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Tags (separadas por coma)</label>
+              <input style={{ width: '100%' }} value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+              {tagSuggestions.length > 0 && (
+                <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {tagSuggestions.slice(0, 12).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className="tp-btn--ghost"
+                      onClick={() => addTag(t)}
+                      style={{ fontSize: 12 }}
                     >
-                      {JSON.stringify({ before: e.before, after: e.after, meta: e.meta }, null, 2)}
-                    </pre>
-                  </details>
-                ))}
+                      + {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 8 }} className="tp-fileRow">
+                <input
+                  id={`tp-file-${task.id}`}
+                  className="tp-fileInput"
+                  type="file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    setPickedFileName(f.name)
+                    onUploadAttachment(f)
+                    e.currentTarget.value = ''
+                  }}
+                />
+                <label htmlFor={`tp-file-${task.id}`} className="tp-fileButton tp-btn--primary">
+                  Seleccionar archivo
+                </label>
+                <span className="tp-fileName">{pickedFileName ? pickedFileName : 'Ningún archivo seleccionado'}</span>
+              </div>
+              <div>
+                <h4>Adjuntos</h4>
+                {attachments.length === 0 && <div>Sin adjuntos</div>}
+                <ul>
+                  {attachments.map((a) => (
+                    <li key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <a href={`${getApiUrl()}/attachments/${a.id}/download`} target="_blank" rel="noreferrer">
+                        {a.original_name}
+                      </a>
+                      <button type="button" onClick={() => onDeleteAttachment(a.id)}>
+                        Borrar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <h4>Historial</h4>
+                {auditLogs.length === 0 && <div>Sin eventos</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {auditLogs.map((e) => (
+                    <details key={e.id} className="tp-card" style={{ padding: 10 }}>
+                      <summary style={{ cursor: 'pointer' }}>
+                        <span className="tp-kbd">{new Date(e.created_at).toLocaleString()}</span>
+                        {' · '}
+                        <span className="tp-kbd">{e.action}</span>
+                        {e.meta?.changed_fields ? ` · ${e.meta.changed_fields.join(', ')}` : ''}
+                      </summary>
+                      <pre
+                        className="tp-kbd"
+                        style={{
+                          whiteSpace: 'pre-wrap',
+                          marginTop: 8,
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 12,
+                          padding: 10,
+                          overflow: 'auto',
+                        }}
+                      >
+                        {JSON.stringify({ before: e.before, after: e.after, meta: e.meta }, null, 2)}
+                      </pre>
+                    </details>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <button className="tp-btn--danger" onClick={onDelete}>
-            Borrar tarea
-          </button>
-          <button className="tp-btn--primary"
-            onClick={() =>
-              onSave({
-                title: title.trim() || task.title,
-                description: description.trim() ? description : null,
-                status,
-                priority,
-                due_date: dueDate || null,
-                estimate_hours: estimate.trim() ? Number(estimate) : null,
-                tags: parseTags(tagsText),
-                release_id: releaseSel === 'backlog' ? null : releaseSel,
-              })
-            }
-          >
-            Guardar
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <button className="tp-btn--danger" onClick={onDelete}>
+              Borrar tarea
+            </button>
+            <button
+              className="tp-btn--primary"
+              onClick={() =>
+                onSave({
+                  title: title.trim() || task.title,
+                  description: description.trim() ? description : null,
+                  status,
+                  priority,
+                  due_date: dueDate || null,
+                  estimate_hours: estimate.trim() ? Number(estimate) : null,
+                  tags: parseTags(tagsText),
+                  release_id: releaseSel === 'backlog' ? null : releaseSel,
+                })
+              }
+            >
+              Guardar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -851,7 +932,9 @@ function KanbanColumn({
               background: 'var(--surface)',
             }}
           >
-            <div style={{ fontWeight: 650 }}>{t.title}</div>
+            <div className="tp-taskTitle" style={{ fontWeight: 650 }}>
+              {t.title}
+            </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
               {t.priority}
               {t.due_date ? ` · vence ${t.due_date}` : ''}

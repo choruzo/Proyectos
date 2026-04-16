@@ -2,6 +2,17 @@ const API_URL = (import.meta as any).env.VITE_API_URL ?? 'http://localhost:8000'
 
 let accessToken: string | null = null
 
+const UNAUTHORIZED_EVENT = 'tp:unauthorized'
+
+function notifyUnauthorized() {
+  try {
+    setAccessToken(null)
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  } catch {
+    // ignore
+  }
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token
 }
@@ -12,7 +23,10 @@ async function refresh(): Promise<string | null> {
       method: 'POST',
       credentials: 'include',
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      if (res.status === 401) notifyUnauthorized()
+      return null
+    }
     const data = await res.json()
     setAccessToken(data.access_token)
     return data.access_token
@@ -37,6 +51,7 @@ export async function apiFetch(path: string, init: RequestInit = {}, retry = tru
   }
 
   if (!res.ok) {
+    if (res.status === 401) notifyUnauthorized()
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
   }

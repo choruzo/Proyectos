@@ -12,6 +12,29 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
 
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return !window.matchMedia('(max-width: 900px)').matches
+  })
+
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [sidebarOpen])
+
+  function toggleSidebar() {
+    setSidebarOpen((v) => !v)
+  }
+
+  function selectProject(p: Project) {
+    setSelected(p)
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) setSidebarOpen(false)
+  }
+
   async function load() {
     const data = await apiFetch('/projects')
     setProjects(data)
@@ -91,16 +114,43 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="tp-shell">
       <div className="tp-topbar">
-        <div className="tp-brand">
-          <h1 style={{ margin: 0 }}>Task Platform</h1>
-          <small>Proyectos · Versiones · Tareas</small>
+        <div className="tp-topbarLeft">
+          <button
+            type="button"
+            className="tp-btn--ghost tp-iconBtn"
+            onClick={toggleSidebar}
+            aria-label={sidebarOpen ? 'Ocultar menú de proyectos' : 'Mostrar menú de proyectos'}
+            aria-expanded={sidebarOpen}
+            title={sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'}
+          >
+            <span aria-hidden="true">{sidebarOpen ? '⟨' : '☰'}</span>
+          </button>
+
+          <div className="tp-brand">
+            <h1 style={{ margin: 0 }}>Task Platform</h1>
+            <small>Proyectos · Versiones · Tareas</small>
+          </div>
         </div>
+
         <ThemeToggle />
       </div>
 
-      <div className="tp-layout">
+      <div className={`tp-layout ${sidebarOpen ? 'tp-layout--sidebar-open' : 'tp-layout--sidebar-collapsed'}`}>
+        <div className="tp-sidebarOverlay" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
+
         <div className="tp-panel tp-sidebar">
-          <h3 style={{ marginTop: 0 }}>Proyectos</h3>
+          <div className="tp-sidebarHeader">
+            <h3 style={{ margin: 0 }}>Proyectos</h3>
+            <button
+              type="button"
+              className="tp-btn--ghost tp-iconBtn tp-sidebarClose"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Cerrar menú"
+              title="Cerrar"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nuevo proyecto" />
             <button className="tp-btn--primary" onClick={createProject}>
@@ -112,7 +162,7 @@ export function ProjectsPage({ onLogout }: { onLogout: () => void }) {
             {projects.map((p) => (
               <button
                 key={p.id}
-                onClick={() => setSelected(p)}
+                onClick={() => selectProject(p)}
                 className="tp-card"
                 style={{
                   textAlign: 'left',
