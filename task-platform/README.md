@@ -33,6 +33,13 @@ Recorrido rápido de la app (generado con Playwright):
 
 Frames individuales: `artifacts/demo/frames/*.png`
 
+## Licencia
+Este proyecto está disponible bajo **GNU AGPL v3.0 o posterior** (ver [`LICENSE`](LICENSE)).
+
+Para uso comercial con términos alternativos (licencia propietaria / sin obligaciones AGPL), consulta [`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md) y contacta en el email indicado allí (recuerda reemplazar el placeholder).
+
+> Nota: las dependencias de terceros (p. ej. frontend) mantienen sus **propias licencias**; ver sus ficheros `LICENSE*` correspondientes.
+
 ## Qué incluye el MVP
 - Login local (multiusuario) con distinción **Admin** vs **Usuario**.
   - Access token (en memoria) + refresh token via cookie httpOnly.
