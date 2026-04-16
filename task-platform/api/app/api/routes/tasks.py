@@ -123,7 +123,10 @@ def create_task(
         if rel is None or rel.project_id != payload.project_id:
             raise HTTPException(status_code=400, detail="Invalid release_id")
 
-    task = Task(**payload.model_dump(exclude={"tags"}))
+    data = payload.model_dump(exclude={"tags"})
+    data["created_by"] = user.id
+    data["updated_by"] = user.id
+    task = Task(**data)
     db.add(task)
     db.flush()
 
@@ -173,6 +176,10 @@ def update_task(
 
     data = payload.model_dump(exclude_unset=True)
 
+    # Never allow clients to overwrite ownership/audit fields.
+    for k in ("created_by", "updated_by"):
+        data.pop(k, None)
+
     if "release_id" in data and data["release_id"] is not None:
         rel = db.get(Release, data["release_id"])
         if rel is None or rel.project_id != task.project_id:
@@ -191,6 +198,8 @@ def update_task(
 
     for k, v in data.items():
         setattr(task, k, v)
+
+    task.updated_by = user.id
 
     if tags is not None:
         db.execute(delete(TaskTag).where(TaskTag.task_id == task.id))

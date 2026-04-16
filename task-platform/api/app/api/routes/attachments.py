@@ -77,6 +77,8 @@ def upload_attachment(
         size_bytes=total,
         storage_key=storage_key,
         uploaded_by=user.id,
+        created_by=user.id,
+        updated_by=user.id,
     )
     db.add(att)
     db.flush()

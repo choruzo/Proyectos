@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
 from app.core.security import hash_password
 from app.db.session import get_db
-from app.models.attachment import Attachment
-from app.models.audit_log import AuditLog
 from app.models.project import Project
-from app.models.release import Release
-from app.models.task import Task
 from app.models.user import User
 from app.models.user_project import UserProject
 from app.schemas.admin_stats import AdminStatsOut, ProjectStatsOut
@@ -27,6 +21,7 @@ from app.schemas.user import (
     UserProjectsOut,
     UserProjectsUpdate,
 )
+from app.services.stats import compute_project_stats
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -230,88 +225,34 @@ def replace_project_users(
 
 @router.get("/stats", response_model=AdminStatsOut)
 def admin_stats(
+    audit_days: int = Query(7, ge=1, le=365),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AdminStatsOut:
     _require_admin(user)
 
-    now = datetime.now(UTC)
-    since_7d = now - timedelta(days=7)
-
     projects = list(db.scalars(select(Project).order_by(Project.name)))
-
-    tasks_by_status: dict[str, dict[str, int]] = {}
-    for pid, status_name, cnt in db.execute(
-        select(Task.project_id, Task.status, func.count(Task.id))
-        .group_by(Task.project_id, Task.status)
-    ).all():
-        tasks_by_status.setdefault(pid, {})[status_name] = int(cnt)
-
-    tasks_by_priority: dict[str, dict[str, int]] = {}
-    for pid, prio, cnt in db.execute(
-        select(Task.project_id, Task.priority, func.count(Task.id))
-        .group_by(Task.project_id, Task.priority)
-    ).all():
-        tasks_by_priority.setdefault(pid, {})[prio] = int(cnt)
-
-    backlog_totals = dict(
-        (pid, int(cnt))
-        for pid, cnt in db.execute(
-            select(Task.project_id, func.count(Task.id))
-            .where(Task.release_id.is_(None))
-            .group_by(Task.project_id)
-        ).all()
-    )
-
-    attachment_rows = db.execute(
-        select(Task.project_id, func.count(Attachment.id), func.coalesce(func.sum(Attachment.size_bytes), 0))
-        .join(Task, Task.id == Attachment.task_id)
-        .group_by(Task.project_id)
-    ).all()
-    attachments_totals: dict[str, tuple[int, int]] = {pid: (int(cnt), int(sz)) for pid, cnt, sz in attachment_rows}
-
-    audit_totals = dict(
-        (pid, int(cnt))
-        for pid, cnt in db.execute(
-            select(AuditLog.project_id, func.count(AuditLog.id))
-            .where(AuditLog.project_id.is_not(None))
-            .group_by(AuditLog.project_id)
-        ).all()
-    )
-
-    audit_last_7d = dict(
-        (pid, int(cnt))
-        for pid, cnt in db.execute(
-            select(AuditLog.project_id, func.count(AuditLog.id))
-            .where(AuditLog.project_id.is_not(None), AuditLog.created_at >= since_7d)
-            .group_by(AuditLog.project_id)
-        ).all()
-    )
+    now, stats_by_project = compute_project_stats(db, [p.id for p in projects], audit_days=audit_days)
 
     out_projects: list[ProjectStatsOut] = []
     for p in projects:
-        by_status = tasks_by_status.get(p.id, {})
-        by_priority = tasks_by_priority.get(p.id, {})
-        tasks_total = int(sum(by_status.values()))
-        backlog_total = int(backlog_totals.get(p.id, 0))
+        stats = stats_by_project.get(p.id)
+        if stats is None:
+            stats = {
+                "tasks_total": 0,
+                "backlog_total": 0,
+                "overdue_total": 0,
+                "missing_due_date_total": 0,
+                "tasks_by_status": {},
+                "tasks_by_priority": {},
+                "tasks_by_release": [{"release_id": None, "release_name": "Backlog", "tasks_total": 0}],
+                "attachments_total": 0,
+                "attachments_bytes": 0,
+                "audit_total": 0,
+                "audit_last_7d": 0,
+                "audit_last_window": 0,
+            }
 
-        att_cnt, att_sz = attachments_totals.get(p.id, (0, 0))
-        audit_cnt = int(audit_totals.get(p.id, 0))
-        audit_7d = int(audit_last_7d.get(p.id, 0))
+        out_projects.append(ProjectStatsOut(project_id=p.id, project_name=p.name, **stats))
 
-        out_projects.append(
-            ProjectStatsOut(
-                project_id=p.id,
-                project_name=p.name,
-                tasks_total=tasks_total,
-                backlog_total=backlog_total,
-                tasks_by_status=by_status,
-                tasks_by_priority=by_priority,
-                attachments_total=att_cnt,
-                attachments_bytes=att_sz,
-                audit_total=audit_cnt,
-                audit_last_7d=audit_7d,
-            )
-        )
-
-    return AdminStatsOut(generated_at=now, projects=out_projects)
+    return AdminStatsOut(generated_at=now, audit_window_days=audit_days, projects=out_projects)

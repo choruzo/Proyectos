@@ -16,7 +16,9 @@ import app.models  # noqa: F401
 
 
 def init_db(db: Session) -> None:
-    # Create tables (MVP). Later we can switch to Alembic migrations.
+    # Create tables (MVP).
+    # Alembic migrations are now available under api/alembic/, but we keep create_all
+    # for a minimal/safe startup flow until the app is switched fully to migrations.
     # When running in Docker, Postgres might not be ready the instant the API starts.
     last_err: Exception | None = None
     for _attempt in range(30):
