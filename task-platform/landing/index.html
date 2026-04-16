@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Platform — Gestión de tareas en tu servidor</title>
+  <meta name="description" content="Plataforma de gestión de tareas por proyecto y versión, auto-alojada. Sin cuota mensual, sin nube externa. Tus datos, en tu servidor." />
+  <style>
+    /* ── Duna Serena tokens ─────────────────────────────── */
+    :root {
+      --font-sans: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+      --font-title: Georgia, "Times New Roman", serif;
+      --font-mono: Consolas, ui-monospace, SFMono-Regular, Menlo, monospace;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 22px;
+      --shadow-1: 0 18px 45px rgba(0,0,0,.12), 0 6px 16px rgba(0,0,0,.08);
+      --shadow-2: 0 10px 22px rgba(0,0,0,.10);
+      --ease: cubic-bezier(0.22,1,0.36,1);
+    }
+    :root[data-theme='light'] {
+      color-scheme: light;
+      --bg0: #fcf8f0;
+      --bg1: #f5ecdd;
+      --surface: rgba(255,255,255,.86);
+      --surface-2: rgba(252,248,240,.92);
+      --border: #e2d5be;
+      --text: #1a1817;
+      --muted: #5e5854;
+      --muted-2: #7f776f;
+      --accent: #f28c28;
+      --accent-2: #d9631e;
+      --sage: #88ae9e;
+    }
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+      --bg0: #121110;
+      --bg1: #1a1817;
+      --surface: rgba(26,24,23,.86);
+      --surface-2: rgba(32,29,28,.92);
+      --border: #3c3836;
+      --text: #f5ecdd;
+      --muted: rgba(245,236,221,.72);
+      --muted-2: rgba(245,236,221,.55);
+      --accent: #f28c28;
+      --accent-2: #d9631e;
+      --sage: #88ae9e;
+    }
+
+    /* ── Reset + base ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-sans);
+      color: var(--text);
+      background:
+        radial-gradient(1100px 650px at 12% -10%, rgba(242,140,40,.14), transparent 60%),
+        radial-gradient(1000px 650px at 92% 0%, rgba(136,174,158,.11), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      min-height: 100vh;
+      transition: background 320ms var(--ease), color 180ms var(--ease);
+    }
+    h1,h2,h3,h4 { font-family: var(--font-title); letter-spacing: -.01em; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    img { max-width: 100%; display: block; }
+
+    /* ── Layout helpers ─────────────────────────────────── */
+    .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+    .surface {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-1);
+    }
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      font: inherit; font-size: 15px;
+      padding: 12px 22px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      box-shadow: var(--shadow-2);
+      transition: transform 160ms var(--ease), background 160ms var(--ease);
+      text-decoration: none;
+    }
+    .btn:hover { transform: translateY(-2px); text-decoration: none; }
+    .btn-primary {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white), var(--accent));
+      border-color: color-mix(in srgb, var(--accent) 65%, black);
+      color: #fff;
+      font-weight: 600;
+    }
+    :root[data-theme='dark'] .btn-primary { color: #121110; }
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* ── Topbar ─────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: color-mix(in srgb, var(--bg0) 88%, transparent);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+    }
+    .topbar-inner {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .brand { display: flex; flex-direction: column; gap: 1px; }
+    .brand h1 { font-size: 20px; line-height: 1; }
+    .brand small { font-family: var(--font-mono); font-size: 10px; letter-spacing: .07em; color: var(--muted); text-transform: uppercase; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    .toggle-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font: inherit; cursor: pointer;
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted);
+      transition: border-color 160ms var(--ease);
+    }
+    .toggle-btn:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+    .toggle-track {
+      width: 36px; height: 20px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      position: relative; flex-shrink: 0;
+    }
+    .toggle-knob {
+      position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 999px;
+      background: var(--accent);
+      transition: transform 200ms var(--ease);
+    }
+    [data-theme='dark'] .toggle-knob { transform: translateX(16px); }
+
+    /* ── Hero ───────────────────────────────────────────── */
+    .hero { padding: 80px 0 60px; text-align: center; }
+    .hero-eyebrow {
+      display: inline-block; margin-bottom: 20px;
+      padding: 6px 14px; border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+      font-family: var(--font-mono); font-size: 12px; letter-spacing: .07em; text-transform: uppercase;
+      color: var(--accent);
+    }
+    .hero h2 { font-size: clamp(32px, 5vw, 56px); line-height: 1.1; margin-bottom: 20px; }
+    .hero h2 span { color: var(--accent); }
+    .hero p {
+      font-size: 18px; color: var(--muted); max-width: 560px; margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+    .hero-cta { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+    /* ── Screenshot showcase ────────────────────────────── */
+    .screenshot-wrap {
+      margin: 0 auto; max-width: 960px; padding: 0 24px 80px;
+    }
+    .screenshot-frame {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-1), 0 40px 80px rgba(0,0,0,.18);
+    }
+    .screenshot-frame img { width: 100%; }
+
+    /* ── Feature grid ───────────────────────────────────── */
+    .section { padding: 72px 0; }
+    .section-label { margin-bottom: 10px; }
+    .section h2 { font-size: clamp(24px, 3.5vw, 38px); margin-bottom: 16px; }
+    .section > .container > p { font-size: 17px; color: var(--muted); max-width: 560px; line-height: 1.6; margin-bottom: 48px; }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .feature-card {
+      padding: 24px;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-2);
+    }
+    .feature-icon {
+      font-size: 28px; margin-bottom: 14px; line-height: 1;
+    }
+    .feature-card h3 { font-size: 17px; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.55; }
+
+    /* ── Split sections ─────────────────────────────────── */
+    .split {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 48px; align-items: center;
+      padding: 72px 0;
+    }
+    .split.reverse .split-img { order: -1; }
+    .split-text .mono { margin-bottom: 10px; }
+    .split-text h2 { font-size: clamp(22px, 3vw, 34px); margin-bottom: 14px; }
+    .split-text p { font-size: 16px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    .split-text ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .split-text li {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 15px; color: var(--muted);
+    }
+    .split-text li::before {
+      content: '▸'; color: var(--accent); flex-shrink: 0; margin-top: 1px;
+    }
+    .split-img { border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-1); }
+    .split-img img { width: 100%; }
+
+    /* ── Pricing ────────────────────────────────────────── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 48px;
+    }
+    .price-card {
+      padding: 28px 24px;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-2);
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .price-card.featured {
+      border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+      background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+      box-shadow: var(--shadow-1), 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+    }
+    .price-badge {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      background: var(--accent); color: #fff; font-size: 11px;
+      font-family: var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    :root[data-theme='dark'] .price-badge { color: #121110; }
+    .price-card h3 { font-size: 18px; }
+    .price-amount { font-family: var(--font-title); font-size: 38px; line-height: 1; }
+    .price-amount span { font-size: 16px; color: var(--muted); font-family: var(--font-sans); }
+    .price-desc { font-size: 14px; color: var(--muted); line-height: 1.5; }
+    .price-features { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+    .price-features li {
+      display: flex; gap: 9px; align-items: flex-start;
+      font-size: 14px; color: var(--muted);
+    }
+    .price-features li::before { content: '✓'; color: var(--sage); flex-shrink: 0; font-weight: 700; }
+    .price-card .btn { margin-top: auto; justify-content: center; }
+
+    /* ── ROI banner ─────────────────────────────────────── */
+    .roi-banner {
+      padding: 40px 32px;
+      border-radius: var(--radius-lg);
+      background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+      text-align: center;
+      margin: 0 0 72px;
+    }
+    .roi-banner p { font-size: 18px; line-height: 1.6; color: var(--muted); max-width: 640px; margin: 12px auto 0; }
+    .roi-banner strong { color: var(--text); }
+
+    /* ── Partner CTA ────────────────────────────────────── */
+    .partner-section { padding: 72px 0; }
+    .partner-box {
+      padding: 48px 40px; text-align: center;
+    }
+    .partner-box .mono { margin-bottom: 12px; }
+    .partner-box h2 { font-size: clamp(22px, 3.5vw, 36px); margin-bottom: 16px; }
+    .partner-box p { font-size: 17px; color: var(--muted); max-width: 560px; margin: 0 auto 32px; line-height: 1.6; }
+    .partner-box .cta-group { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+    /* ── Install block ──────────────────────────────────── */
+    .install-block {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px 24px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text);
+      overflow-x: auto;
+    }
+    .install-block .comment { color: var(--muted); }
+    .install-block .cmd { color: var(--accent); }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 36px 0;
+      text-align: center;
+    }
+    .footer p { font-size: 13px; color: var(--muted-2); line-height: 1.7; }
+    .footer a { color: var(--accent); }
+    .footer-links { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
+    .footer-links a { font-size: 13px; color: var(--muted); }
+    .footer-links a:hover { color: var(--accent); text-decoration: none; }
+
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .split { grid-template-columns: 1fr; gap: 32px; padding: 48px 0; }
+      .split.reverse .split-img { order: 0; }
+      .hero { padding: 52px 0 44px; }
+      .section { padding: 52px 0; }
+      .partner-box { padding: 36px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── TOPBAR ──────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="container topbar-inner">
+    <div class="brand">
+      <h1>Task Platform</h1>
+      <small>Duna Serena</small>
+    </div>
+    <nav class="topbar-right">
+      <a href="#funcionalidades" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Funcionalidades</a>
+      <a href="#precios" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Precios</a>
+      <a href="#contacto" class="btn btn-primary" style="padding:8px 16px;font-size:14px;">Contactar</a>
+      <button class="toggle-btn" onclick="toggleTheme()" aria-label="Cambiar tema">
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span id="theme-label">CLARO</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- ── HERO ────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-eyebrow">Self-hosted · Sin cuota mensual · RGPD nativo</div>
+    <h2>Gestión de tareas<br><span>en tu servidor</span></h2>
+    <p>Organiza proyectos y versiones con kanban, lista y adjuntos. Todo en tu infraestructura — sin datos en la nube, sin precio por usuario.</p>
+    <div class="hero-cta">
+      <a href="#precios" class="btn btn-primary">Ver precios →</a>
+      <a href="#funcionalidades" class="btn btn-ghost">Explorar funcionalidades</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── SCREENSHOT HERO ─────────────────────────────────────── -->
+<div class="screenshot-wrap">
+  <div class="screenshot-frame">
+    <img src="assets/kanban-dark.png" alt="Vista Kanban de Task Platform" id="hero-screenshot" loading="lazy" />
+  </div>
+</div>
+
+<!-- ── ROI BANNER ──────────────────────────────────────────── -->
+<div class="container">
+  <div class="roi-banner">
+    <div class="mono">Coste comparado</div>
+    <h2 style="font-size:clamp(20px,3vw,30px);margin-bottom:0;">Jira Cloud: <strong style="color:var(--accent);">~155 €/mes</strong> para 20 usuarios. Task Platform: <strong style="color:var(--sage);">299 € una vez.</strong></h2>
+    <p>Con Task Platform te amortizas en <strong>2 meses</strong>. A partir del tercer mes, es ahorro puro. Sin sorpresas en la factura cuando el equipo crece.</p>
+  </div>
+</div>
+
+<!-- ── FUNCIONALIDADES ─────────────────────────────────────── -->
+<section class="section" id="funcionalidades">
+  <div class="container">
+    <div class="mono section-label">Funcionalidades</div>
+    <h2>Todo lo que necesita tu equipo</h2>
+    <p>Diseñado para equipos de desarrollo de software que gestionan trabajo por proyectos y versiones/releases.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📋</div>
+        <h3>Kanban y Lista</h3>
+        <p>Visualiza el trabajo como quieras. Cambia entre vista kanban y tabla en un clic, con filtros por estado, prioridad y etiqueta.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏷️</div>
+        <h3>Proyectos y Versiones</h3>
+        <p>Organiza las tareas por proyecto y release. El backlog siempre separado de las versiones en desarrollo o entregadas.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Multiusuario con roles</h3>
+        <p>Admin y usuario normal. El admin asigna qué proyectos ve cada persona. Control total sobre accesos sin complicaciones.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📎</div>
+        <h3>Adjuntos hasta 100 MB</h3>
+        <p>Sube capturas, documentos o cualquier archivo directamente a la tarea. Todo almacenado en tu servidor.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🕵️</div>
+        <h3>Historial de auditoría</h3>
+        <p>Cada cambio queda registrado. Quién hizo qué y cuándo, visible en el detalle de cada tarea.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Estadísticas y exportación</h3>
+        <p>Panel de estadísticas global y por proyecto. Exporta todos tus datos a JSON en cualquier momento.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Datos en tu servidor</h3>
+        <p>Instala con Docker Compose en 10 minutos. Los datos nunca salen de tu infraestructura. RGPD por diseño.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <h3>Modo claro y oscuro</h3>
+        <p>Tema Duna Serena — arena y ámbar. Conmuta entre modo claro y oscuro con un clic.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💾</div>
+        <h3>Vistas guardadas (Presets)</h3>
+        <p>Guarda combinaciones de filtros como presets por proyecto. Accede a tu vista habitual en un clic.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SPLIT: KANBAN LIGHT ─────────────────────────────────── -->
+<div class="container">
+  <div class="split">
+    <div class="split-text">
+      <div class="mono">Vista Kanban</div>
+      <h2>El trabajo de un vistazo</h2>
+      <p>Cuatro columnas: Backlog, Por hacer, En desarrollo, Hecho. Cada tarjeta muestra título y prioridad. Filtra en tiempo real sin recargar la página.</p>
+      <ul>
+        <li>Filtros por estado, prioridad y etiqueta simultáneos</li>
+        <li>Buscador de texto sobre todas las tareas de la versión</li>
+        <li>Selector de versión/release integrado en la barra</li>
+      </ul>
+    </div>
+    <div class="split-img">
+      <img src="assets/kanban-light.png" alt="Kanban modo claro" loading="lazy" />
+    </div>
+  </div>
+</div>
+
+<!-- ── SPLIT: LISTA DARK ───────────────────────────────────── -->
+<div class="container">
+  <div class="split reverse">
+    <div class="split-text">
+      <div class="mono">Vista Lista</div>
+      <h2>Tabla cuando necesitas densidad</h2>
+      <p>Título, estado, prioridad, fecha de vencimiento, estimación en horas y etiquetas en una sola fila. Ordena y filtra igual que en kanban.</p>
+      <ul>
+        <li>Mismos filtros que kanban, distinto formato</li>
+        <li>Ideal para revisiones de sprint o reuniones de equipo</li>
+        <li>Abre el detalle completo de cada tarea con un clic</li>
+      </ul>
+    </div>
+    <div class="split-img">
+      <img src="assets/lista-dark.png" alt="Vista lista modo oscuro" loading="lazy" />
+    </div>
+  </div>
+</div>
+
+<!-- ── SPLIT: STATS ────────────────────────────────────────── -->
+<div class="container">
+  <div class="split">
+    <div class="split-text">
+      <div class="mono">Panel de administración</div>
+      <h2>Control total para el administrador</h2>
+      <p>Gestiona usuarios, proyectos, versiones y accesos desde un panel central. Las estadísticas muestran el estado del trabajo en tiempo real.</p>
+      <ul>
+        <li>Crear y desactivar usuarios, reset de contraseña</li>
+        <li>Asignar qué proyectos ve cada usuario</li>
+        <li>Gráficos de estado y prioridad por proyecto</li>
+        <li>Exportar todos los datos a JSON</li>
+      </ul>
+    </div>
+    <div class="split-img">
+      <img src="assets/stats-light.png" alt="Panel de estadísticas" loading="lazy" />
+    </div>
+  </div>
+</div>
+
+<!-- ── INSTALACIÓN ─────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <div class="mono section-label">Instalación</div>
+    <h2>En marcha en 10 minutos</h2>
+    <p style="margin-bottom:28px;">Solo necesitas Docker y Docker Compose. Funciona en cualquier servidor Linux, Windows Server o NAS compatible.</p>
+    <div class="install-block">
+      <span class="comment"># 1. Descarga el proyecto y configura las variables</span><br>
+      <span class="cmd">cp .env.example .env</span><br><br>
+      <span class="comment"># 2. Arranca todos los servicios (base de datos, API, web)</span><br>
+      <span class="cmd">docker compose up --build -d</span><br><br>
+      <span class="comment"># Ya está. Accede desde tu red local:</span><br>
+      <span class="comment"># Web → http://tu-servidor:8080</span><br>
+      <span class="comment"># API → http://tu-servidor:8000/docs</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── PRECIOS ─────────────────────────────────────────────── -->
+<section class="section" id="precios">
+  <div class="container">
+    <div class="mono section-label">Precios</div>
+    <h2>Pago único. Sin suscripción.</h2>
+    <p>Licencia perpetua. El software sigue funcionando aunque no renueves. La renovación anual opcional da acceso a actualizaciones y soporte.</p>
+
+    <div class="pricing-grid">
+      <!-- Community -->
+      <div class="price-card">
+        <div>
+          <div class="mono" style="margin-bottom:6px;">Community</div>
+          <h3>Libre</h3>
+        </div>
+        <div class="price-amount">0 €</div>
+        <p class="price-desc">Licencia AGPL v3. Código fuente disponible. Ideal para uso personal o proyectos open source.</p>
+        <ul class="price-features">
+          <li>Instalación ilimitada</li>
+          <li>Usuarios ilimitados</li>
+          <li>Todas las funcionalidades</li>
+          <li>Obligación AGPL (modificaciones públicas)</li>
+        </ul>
+        <a href="https://github.com" class="btn btn-ghost" style="justify-content:center;">Ver en GitHub</a>
+      </div>
+
+      <!-- Starter -->
+      <div class="price-card featured">
+        <div>
+          <div class="price-badge">Más popular</div>
+          <h3>Starter</h3>
+        </div>
+        <div class="price-amount">299 € <span>pago único</span></div>
+        <p class="price-desc">Licencia comercial. Sin obligaciones AGPL. Para equipos de hasta 15 usuarios.</p>
+        <ul class="price-features">
+          <li>Hasta 15 usuarios</li>
+          <li>Licencia comercial (sin AGPL)</li>
+          <li>1 año de actualizaciones</li>
+          <li>Soporte por email</li>
+        </ul>
+        <a href="#contacto" class="btn btn-primary" style="justify-content:center;">Comprar licencia →</a>
+      </div>
+
+      <!-- Business -->
+      <div class="price-card">
+        <div>
+          <div class="mono" style="margin-bottom:6px;">Business</div>
+          <h3>Ilimitado</h3>
+        </div>
+        <div class="price-amount">599 € <span>pago único</span></div>
+        <p class="price-desc">Usuarios ilimitados. Para empresas con equipos grandes o múltiples departamentos.</p>
+        <ul class="price-features">
+          <li>Usuarios ilimitados</li>
+          <li>Licencia comercial (sin AGPL)</li>
+          <li>1 año de actualizaciones</li>
+          <li>Soporte prioritario</li>
+        </ul>
+        <a href="#contacto" class="btn btn-ghost" style="justify-content:center;">Contactar →</a>
+      </div>
+
+      <!-- Partner -->
+      <div class="price-card">
+        <div>
+          <div class="mono" style="margin-bottom:6px;">Partner / Reseller</div>
+          <h3>Revendedor</h3>
+        </div>
+        <div class="price-amount">199 € <span>/ licencia</span></div>
+        <p class="price-desc">Para consultoras e integradores IT que quieran ofrecer Task Platform a sus clientes.</p>
+        <ul class="price-features">
+          <li>Precio mayorista por licencia Business</li>
+          <li>Revendéla a tu cliente al precio que decidas</li>
+          <li>Soporte técnico incluido para el partner</li>
+          <li>Sin mínimo de licencias</li>
+        </ul>
+        <a href="#contacto" class="btn btn-ghost" style="justify-content:center;">Ser partner →</a>
+      </div>
+    </div>
+
+    <p style="margin-top:24px;font-size:13px;color:var(--muted-2);text-align:center;">
+      Renovación opcional (año 2+): 99 €/año para actualizaciones y soporte. Si no renuevas, el software sigue funcionando.
+    </p>
+  </div>
+</section>
+
+<!-- ── PARTNER CTA ─────────────────────────────────────────── -->
+<section class="partner-section" id="contacto">
+  <div class="container">
+    <div class="partner-box surface">
+      <div class="mono">Para integradores y consultoras</div>
+      <h2>¿Ofreces software a tus clientes?</h2>
+      <p>Añade Task Platform a tu catálogo. Tus clientes obtienen una herramienta de gestión en su propio servidor — tú cobras la implantación y el soporte. Sin mínimos, sin complicaciones.</p>
+      <div class="cta-group">
+        <a href="mailto:taskplatform.es@gmail.com?subject=Interés%20partner%20Task%20Platform" class="btn btn-primary">Hablar con nosotros →</a>
+        <a href="mailto:taskplatform.es@gmail.com?subject=Licencia%20Task%20Platform" class="btn btn-ghost">Solicitar licencia</a>
+      </div>
+      <p style="margin-top:20px;font-size:13px;color:var(--muted-2);">
+        También en
+        <a href="https://x.com/info-taskplatform" target="_blank" rel="noopener">X (@info-taskplatform)</a> ·
+        <a href="https://linkedin.com" target="_blank" rel="noopener">LinkedIn</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ──────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="#funcionalidades">Funcionalidades</a>
+      <a href="#precios">Precios</a>
+      <a href="#contacto">Contacto</a>
+      <a href="mailto:taskplatform.es@gmail.com">taskplatform.es@gmail.com</a>
+    </div>
+    <p>
+      Task Platform está disponible bajo licencia <strong>GNU AGPL v3</strong> (edición Community) y licencia comercial propietaria (ediciones Starter, Business, Partner).<br>
+      © 2026 Task Platform España
+    </p>
+  </div>
+</footer>
+
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const isDark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    document.getElementById('theme-label').textContent = isDark ? 'OSCURO' : 'CLARO';
+    // Swap hero screenshot
+    const img = document.getElementById('hero-screenshot');
+    img.src = isDark ? 'assets/kanban-light.png' : 'assets/kanban-dark.png';
+  }
+  // Init label
+  document.getElementById('theme-label').textContent = 'CLARO';
+</script>
+</body>
+</html>
