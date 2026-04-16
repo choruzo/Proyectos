@@ -69,7 +69,7 @@ function StackedBar({ segments, height = 12 }: { segments: Segment[]; height?: n
       ) : (
         segments
           .filter((s) => (s.value || 0) > 0)
-          .map((s) => {
+          .map((s, i, arr) => {
             const pct = (s.value / total) * 100
             const t = s.title ?? `${s.label}: ${s.value} (${pct.toFixed(0)}%)`
             return (
@@ -79,6 +79,10 @@ function StackedBar({ segments, height = 12 }: { segments: Segment[]; height?: n
                 style={{
                   width: `${pct}%`,
                   background: s.color,
+                  borderRight:
+                    i === arr.length - 1
+                      ? undefined
+                      : '1px solid color-mix(in srgb, var(--border) 70%, transparent)',
                 }}
               />
             )
@@ -137,7 +141,7 @@ function statusSegments(p: ProjectStats) {
     const value = Number(c[k] || 0)
     const color =
       k === 'Backlog'
-        ? 'color-mix(in srgb, var(--muted-2) 35%, var(--surface-2))'
+        ? 'color-mix(in srgb, var(--muted-2) 90%, var(--surface-3))'
         : k === 'Todo'
           ? 'color-mix(in srgb, var(--accent) 75%, var(--surface-3))'
           : k === 'Doing'
@@ -259,7 +263,7 @@ export function AdminStatsPage() {
             <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <div className="tp-muted" style={{ fontSize: 12, marginBottom: 6 }}>Por estado</div>
-                <StackedBar segments={statusSegments(global).grouped} />
+                <StackedBar segments={statusSegments(global).detailed} />
                 <div style={{ marginTop: 8 }}>
                   <Legend segments={statusSegments(global).detailed} />
                 </div>
@@ -294,8 +298,8 @@ export function AdminStatsPage() {
 
                 <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
-                    <div className="tp-muted" style={{ fontSize: 12, marginBottom: 6 }}>Pendiente / En desarrollo / Hecha</div>
-                    <StackedBar segments={st.grouped} />
+                    <div className="tp-muted" style={{ fontSize: 12, marginBottom: 6 }}>Backlog / Por hacer / En desarrollo / Hecha</div>
+                    <StackedBar segments={st.detailed} />
                     <div style={{ marginTop: 8 }}>
                       <Legend segments={st.detailed} />
                     </div>

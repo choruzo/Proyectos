@@ -79,6 +79,11 @@ Panel dedicado a **administración, gestión y overview de métricas** por proye
 
 ## 3) API de estadísticas
 
+**Estado:** ✅ Implementado (2026-04-16)
+
+- `GET /admin/stats` (admin-only, con `audit_days` + métricas: overdue/sin due_date, breakdown por release, adjuntos, actividad).
+- `GET /projects/{project_id}/stats` (con `require_project_access`).
+
 - `GET /admin/stats` (agregado global) y/o `GET /projects/{project_id}/stats`.
 - Consultas típicas:
   - `COUNT(*) GROUP BY status, priority`.
@@ -88,6 +93,12 @@ Panel dedicado a **administración, gestión y overview de métricas** por proye
   - actividad: `COUNT(*) FROM audit_logs WHERE project_id = ...` por ventana temporal.
 
 ## 4) Modelo de datos y ownership (para multiusuario)
+
+**Estado:** ✅ Implementado (2026-04-16)
+
+Incluye:
+- Tabla `user_projects` (asignación de proyectos a usuarios).
+- Ownership en entidades (`owner_user_id`, `created_by`, `updated_by`) vía Alembic + write paths que lo rellenan.
 
 Si se quiere pasar de “single-user MVP” a multiusuario real:
 - Añadir tabla de relación **`user_projects`** (o `project_memberships`):
@@ -114,3 +125,41 @@ Si se quiere pasar de “single-user MVP” a multiusuario real:
 - Admin UI con misma estética (tokens ya en `web/src/duna-serena.css`).
 - En la app normal: mostrar un acceso discreto a Admin (solo admin): “Administración”.
 - Añadir estados vacíos con mensajes y acciones (p.ej. sin proyectos / sin releases / sin tareas).
+
+## 8) Asignación / “reclamar” tarea (Assignee)
+
+**Estado:** 📝 Propuesto
+
+Objetivo: que una tarea pueda estar **asignada a un usuario** (p.ej. “responsable”) y que un usuario pueda **reclamarla para sí** (auto-asignación) cuando esté libre.
+
+### Modelo de datos
+- Añadir en `tasks`:
+  - `assigned_user_id` (nullable, FK a `users.id`).
+  - (Opcional) `assigned_at` timestamp para trazabilidad.
+- En respuestas de API incluir `assigned_user_id` y/o un objeto `assignee` mínimo (`{ id, email }`).
+
+### Reglas y permisos (propuesta MVP)
+- **Admin**: puede asignar/desasignar cualquier tarea de proyectos a los que tenga acceso.
+- **Usuario normal**:
+  - Puede **reclamar** una tarea **no asignada** de un proyecto al que tenga acceso.
+  - Puede **liberar** una tarea si está asignada a sí mismo.
+  - (Opcional) No puede asignar a otros usuarios.
+- Conflicto: si la tarea ya está asignada a otro → devolver **409**.
+
+### Endpoints sugeridos
+- `PATCH /tasks/{task_id}`:
+  - permitir `assigned_user_id` (admin-only) para asignar/desasignar.
+- `POST /tasks/{task_id}/claim`:
+  - asigna la tarea al `current_user` si `assigned_user_id IS NULL`.
+- `POST /tasks/{task_id}/unclaim` (o `POST /tasks/{task_id}/release`):
+  - desasigna si `assigned_user_id == current_user.id`.
+
+### UI/UX
+- En tarjeta/listado de tarea mostrar “Asignada a: …” (o icono/initials) y un filtro **“Mis tareas”**.
+- Botón contextual:
+  - si no asignada → “Reclamar”.
+  - si asignada a mí → “Liberar”.
+  - si asignada a otro → solo lectura.
+
+### Auditoría
+- Registrar eventos (ej.: `task_assigned`, `task_unassigned`, `task_claimed`) con before/after y `actor_user_id`.
