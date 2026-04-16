@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiFetch, getApiUrl, setAccessToken } from '../api/client'
+import { apiFetch } from '../api/client'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BoardPage } from './BoardPage'
 
@@ -10,7 +10,7 @@ export function ProjectsPage({
   isAdmin,
   onGoAdmin,
 }: {
-  onLogout: () => void
+  onLogout: () => void | Promise<void>
   isAdmin: boolean
   onGoAdmin?: () => void
 }) {
@@ -111,12 +111,7 @@ export function ProjectsPage({
   }
 
   async function logout() {
-    try {
-      await fetch(`${getApiUrl()}/auth/logout`, { method: 'POST', credentials: 'include' })
-    } finally {
-      setAccessToken(null)
-      onLogout()
-    }
+    await onLogout()
   }
 
   return (

@@ -48,6 +48,10 @@ Incluye: `/auth/me`, `/auth/change-password`, endpoints `/admin/users*`, asignac
 
 ## 2) Panel de administración (UI)
 
+**Estado:** ✅ Implementado (2026-04-16)
+
+Incluye rutas SPA `/admin/users`, `/admin/projects`, `/admin/stats` (con guardas) y soporte API `/admin/stats` + memberships por proyecto (`/admin/projects/{project_id}/users`).
+
 ### Objetivo
 Panel dedicado a **administración, gestión y overview de métricas** por proyecto.
 

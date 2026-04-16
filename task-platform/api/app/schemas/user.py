@@ -49,3 +49,11 @@ class UserProjectsOut(BaseModel):
 
 class UserProjectsUpdate(BaseModel):
     project_ids: list[str]
+
+
+class ProjectUsersOut(BaseModel):
+    user_ids: list[str]
+
+
+class ProjectUsersUpdate(BaseModel):
+    user_ids: list[str]

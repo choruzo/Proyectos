@@ -1,8 +1,11 @@
 import { FormEvent, useState } from 'react'
-import { login } from '../api/client'
 import { ThemeToggle } from '../components/ThemeToggle'
 
-export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
+export function LoginPage({
+  onLoggedIn,
+}: {
+  onLoggedIn: (email: string, password: string) => Promise<void>
+}) {
   const [email, setEmail] = useState('admin@example.com')
   const [password, setPassword] = useState('admin123')
   const [error, setError] = useState<string | null>(null)
@@ -13,8 +16,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     setError(null)
     setLoading(true)
     try {
-      await login(email, password)
-      onLoggedIn()
+      await onLoggedIn(email, password)
     } catch {
       setError('Credenciales incorrectas')
     } finally {
