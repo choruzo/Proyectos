@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:8080"
 
     refresh_cookie_name: str = "refresh_token"
+    refresh_cookie_secure: bool = False
 
     @property
     def cors_origins_list(self) -> list[str]:
