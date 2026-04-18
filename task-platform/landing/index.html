@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Task Platform — Gestión de tareas en tu servidor</title>
-  <meta name="description" content="Plataforma de gestión de tareas por proyecto y versión, auto-alojada. Sin cuota mensual, sin nube externa. Tus datos, en tu servidor." />
+  <title>Task Platform — Gestor de tareas local-first para equipos</title>
+  <meta name="description" content="Gestor de tareas self-hosted para equipos de 3 a 50 personas. Un pago único, tus datos en tu servidor, desplegado en 10 minutos con Docker. Sin suscripción, sin Jira, sin complicaciones." />
   <style>
     /* ── Duna Serena tokens ─────────────────────────────── */
     :root {
@@ -274,6 +274,92 @@
     .roi-banner p { font-size: 18px; line-height: 1.6; color: var(--muted); max-width: 640px; margin: 12px auto 0; }
     .roi-banner strong { color: var(--text); }
 
+    /* ── For whom ──────────────────────────────────────────── */
+    .forwho-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 40px;
+    }
+    .forwho-card {
+      padding: 26px 22px;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-2);
+    }
+    .forwho-card .forwho-icon { font-size: 30px; margin-bottom: 14px; line-height: 1; }
+    .forwho-card h3 { font-size: 16px; margin-bottom: 8px; }
+    .forwho-card p { font-size: 14px; color: var(--muted); line-height: 1.55; }
+    .forwho-not {
+      margin-top: 24px;
+      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-size: 14px; color: var(--muted);
+      line-height: 1.6;
+    }
+    .forwho-not strong { color: var(--text); }
+
+    /* ── Why local-first ────────────────────────────────────── */
+    .whylocal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 40px;
+    }
+    .whylocal-card {
+      padding: 22px 20px;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-2);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .whylocal-label {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--accent);
+    }
+    .whylocal-card h3 { font-size: 15px; }
+    .whylocal-card p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .compare-table-wrap {
+      overflow-x: auto; margin-top: 40px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-2);
+    }
+    .compare-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 14px; background: var(--surface);
+      border-radius: var(--radius-lg); overflow: hidden;
+    }
+    .compare-table th {
+      padding: 13px 18px; text-align: left;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted); background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .compare-table th:first-child { width: 32%; }
+    .compare-table td {
+      padding: 11px 18px;
+      border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+      vertical-align: middle;
+      color: var(--muted);
+    }
+    .compare-table td:first-child { font-weight: 500; color: var(--text); }
+    .compare-table .cell-bad { color: color-mix(in srgb, #d96060 70%, var(--muted)); }
+    .compare-table .cell-good { color: var(--sage); font-weight: 500; }
+    .compare-table tr:last-child td { border-bottom: none; }
+    @media (max-width: 640px) {
+      .compare-table { font-size: 12px; }
+      .compare-table th, .compare-table td { padding: 9px 12px; }
+      .forwho-grid { grid-template-columns: 1fr; }
+      .whylocal-grid { grid-template-columns: 1fr 1fr; }
+    }
+
     /* ── Partner CTA ────────────────────────────────────── */
     .partner-section { padding: 72px 0; }
     .partner-box {
@@ -493,6 +579,7 @@
     </div>
     <nav class="topbar-right">
       <div class="nav-links">
+        <a href="#para-quien" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">¿Para quién?</a>
         <a href="#funcionalidades" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Funcionalidades</a>
         <a href="#demo" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Demo</a>
         <a href="#precios" class="btn btn-ghost" style="padding:8px 16px;font-size:14px;">Precios</a>
@@ -512,6 +599,7 @@
 <!-- ── MOBILE MENU ─────────────────────────────────────────── -->
 <div class="mobile-menu" id="mobile-menu">
   <button class="mobile-close" onclick="closeMenu()">✕</button>
+  <a href="#para-quien" class="btn btn-ghost" onclick="closeMenu()">¿Para quién?</a>
   <a href="#funcionalidades" class="btn btn-ghost" onclick="closeMenu()">Funcionalidades</a>
   <a href="#demo" class="btn btn-ghost" onclick="closeMenu()">Demo</a>
   <a href="#precios" class="btn btn-ghost" onclick="closeMenu()">Precios</a>
@@ -525,12 +613,12 @@
 <!-- ── HERO ────────────────────────────────────────────────── -->
 <section class="hero">
   <div class="container">
-    <div class="hero-eyebrow">Self-hosted · Sin cuota mensual · RGPD nativo</div>
-    <h2>Gestión de tareas<br><span>en tu servidor</span></h2>
-    <p>Organiza proyectos y versiones con kanban, lista y adjuntos. Todo en tu infraestructura — sin datos en la nube, sin precio por usuario.</p>
+    <div class="hero-eyebrow">Local-first · Un pago · Sin suscripción</div>
+    <h2>El gestor de tareas<br><span>que corre en tu máquina</span></h2>
+    <p>Tus datos en tu servidor. Desplegado en 10 minutos con Docker. Sin factura mensual, sin nubes de terceros, sin las 200 funciones de Jira que nunca vas a usar.</p>
     <div class="hero-cta">
       <a href="#precios" class="btn btn-primary">Ver precios →</a>
-      <a href="#funcionalidades" class="btn btn-ghost">Explorar funcionalidades</a>
+      <a href="#para-quien" class="btn btn-ghost">¿Para quién es?</a>
     </div>
   </div>
 </section>
@@ -541,6 +629,123 @@
     <img src="assets/kanban-dark.png" alt="Vista Kanban de Task Platform" id="hero-screenshot" loading="lazy" />
   </div>
 </div>
+
+<!-- ── PARA QUIÉN ───────────────────────────────────────────── -->
+<section class="section" id="para-quien">
+  <div class="container">
+    <div class="mono section-label">¿Para quién es?</div>
+    <h2>Diseñado para equipos que<br>no necesitan un Boeing para ir al kiosko</h2>
+    <p>Task Platform es para organizaciones que quieren una herramienta eficiente, sin pagar por funciones que jamás usarán ni ceder el control de sus datos.</p>
+
+    <div class="forwho-grid">
+      <div class="forwho-card">
+        <div class="forwho-icon">🏗️</div>
+        <h3>Equipos de desarrollo (3-30 personas)</h3>
+        <p>Gestionáis proyectos, versiones y bugs. Jira os sobra y Trello os falta. Queréis kanban, historial de cambios y adjuntos — sin pagar €10/usuario al mes por siempre.</p>
+      </div>
+      <div class="forwho-card">
+        <div class="forwho-icon">🔒</div>
+        <h3>Empresas con datos sensibles</h3>
+        <p>Legal, sanidad, finanzas o defensa. No podéis (o no queréis) que vuestras tareas e incidencias acaben en un servidor de AWS en Virginia. Con Task Platform, los datos no salen de vuestra red.</p>
+      </div>
+      <div class="forwho-card">
+        <div class="forwho-icon">🛠️</div>
+        <h3>Consultoras e integradores IT</h3>
+        <p>Implantáis software en las instalaciones de vuestros clientes. Task Platform se despliega junto al resto de su infraestructura y podéis revenderlo con vuestro margen.</p>
+      </div>
+      <div class="forwho-card">
+        <div class="forwho-icon">🏠</div>
+        <h3>Empresas que quieren independencia</h3>
+        <p>Hartas de que cambien el precio, cierren funciones o quiebren. Con una licencia perpetua y el código fuente disponible, Task Platform sigue funcionando pase lo que pase.</p>
+      </div>
+    </div>
+
+    <div class="forwho-not">
+      <strong>Task Platform probablemente no es para ti si...</strong> tienes 200+ usuarios con flujos de trabajo enterprise muy complejos, necesitas integraciones nativas con Confluence/Salesforce/ServiceNow, o buscas una herramienta con soporte 24/7 con SLA garantizado. Para eso ya existe Jira — y cuesta lo que cuesta.
+    </div>
+  </div>
+</section>
+
+<!-- ── POR QUÉ LOCAL-FIRST ────────────────────────────────────── -->
+<section class="section" style="padding-top:0;">
+  <div class="container">
+    <div class="mono section-label">Filosofía</div>
+    <h2>Por qué local-first tiene sentido</h2>
+    <p>No es ideología, es pragmatismo. Aquí está la diferencia real entre un SaaS de gestión y una herramienta que despiegas tú.</p>
+
+    <div class="compare-table-wrap">
+      <table class="compare-table" aria-label="Comparativa local-first vs SaaS">
+        <thead>
+          <tr>
+            <th>Criterio</th>
+            <th>SaaS (Jira, Trello, Asana…)</th>
+            <th>Task Platform (local-first)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Coste a 3 años (10 usuarios)</td>
+            <td class="cell-bad">~€2.900 – €5.800 acumulados</td>
+            <td class="cell-good">€299 + VPS ~€180 = €479 total</td>
+          </tr>
+          <tr>
+            <td>¿Dónde están tus datos?</td>
+            <td class="cell-bad">Servidores del proveedor (EE.UU. habitual)</td>
+            <td class="cell-good">En tu servidor, en tu red</td>
+          </tr>
+          <tr>
+            <td>Si el proveedor sube precios</td>
+            <td class="cell-bad">Pagas o te quedas sin servicio</td>
+            <td class="cell-good">Tu licencia sigue siendo tuya</td>
+          </tr>
+          <tr>
+            <td>Despliegue</td>
+            <td>Registro y listo (pero dependes de ellos)</td>
+            <td class="cell-good">docker compose up — 10 minutos</td>
+          </tr>
+          <tr>
+            <td>Cumplimiento RGPD</td>
+            <td class="cell-bad">Transferencias internacionales, DPA obligatorio</td>
+            <td class="cell-good">Los datos nunca salen de tu jurisdicción</td>
+          </tr>
+          <tr>
+            <td>Funciones que usas</td>
+            <td class="cell-bad">20% del producto (pagas el 100%)</td>
+            <td class="cell-good">Lo justo: kanban, lista, versiones, adjuntos</td>
+          </tr>
+          <tr>
+            <td>Precio por crecer</td>
+            <td class="cell-bad">Más usuarios = más factura cada mes</td>
+            <td class="cell-good">Usuarios ilimitados en el plan Business</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="whylocal-grid" style="margin-top:28px;">
+      <div class="whylocal-card">
+        <div class="whylocal-label">Propiedad</div>
+        <h3>El software es tuyo</h3>
+        <p>Con licencia comercial el binario es tuyo para siempre. Aunque no renueves actualizaciones, sigue corriendo.</p>
+      </div>
+      <div class="whylocal-card">
+        <div class="whylocal-label">Privacidad</div>
+        <h3>Cero telemetría</h3>
+        <p>Task Platform no llama a casa. No hay analytics, no hay logs de uso enviados a ningún servidor externo.</p>
+      </div>
+      <div class="whylocal-card">
+        <div class="whylocal-label">Simplicidad</div>
+        <h3>Lo que necesitas, nada más</h3>
+        <p>Kanban, lista, proyectos, versiones, etiquetas, adjuntos, auditoría. Sin módulos de BI, roadmaps OKR ni integraciones que nadie activa.</p>
+      </div>
+      <div class="whylocal-card">
+        <div class="whylocal-label">Autonomía</div>
+        <h3>Sin dependencia de terceros</h3>
+        <p>Funciona en tu red local sin internet. Un NAS compatible con Docker es suficiente. Cero dependencias de nube.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ── DEMO ─────────────────────────────────────────────────── -->
 <section class="section" id="demo">
@@ -627,13 +832,12 @@
       <p class="demo-caption">Panel de admin: gestión de usuarios y proyectos, asignación de accesos, estadísticas globales y exportación JSON.</p>
     </div>
 
-    <!-- Guía de qué grabar -->
     <div class="demo-steps">
-      <div class="demo-step"><div class="demo-step-num">1</div><span>Login y navegación inicial entre proyectos</span></div>
-      <div class="demo-step"><div class="demo-step-num">2</div><span>Crear tarea, asignar prioridad y etiqueta en Kanban</span></div>
-      <div class="demo-step"><div class="demo-step-num">3</div><span>Abrir detalle, subir adjunto, ver auditoría</span></div>
-      <div class="demo-step"><div class="demo-step-num">4</div><span>Cambiar a Vista Lista y guardar preset de filtros</span></div>
-      <div class="demo-step"><div class="demo-step-num">5</div><span>Panel admin: crear usuario, asignar proyecto, ver stats</span></div>
+      <div class="demo-step"><div class="demo-step-num">1</div><span>Login seguro: token en memoria, sin localStorage</span></div>
+      <div class="demo-step"><div class="demo-step-num">2</div><span>Kanban con filtros en tiempo real por estado y etiqueta</span></div>
+      <div class="demo-step"><div class="demo-step-num">3</div><span>Detalle de tarea con adjuntos hasta 100 MB y auditoría completa</span></div>
+      <div class="demo-step"><div class="demo-step-num">4</div><span>Vista Lista con presets de filtros guardados por proyecto</span></div>
+      <div class="demo-step"><div class="demo-step-num">5</div><span>Panel admin: usuarios, proyectos, estadísticas y exportación JSON</span></div>
     </div>
   </div>
 </section>
@@ -641,9 +845,9 @@
 <!-- ── ROI BANNER ──────────────────────────────────────────── -->
 <div class="container">
   <div class="roi-banner">
-    <div class="mono">Coste comparado</div>
-    <h2 style="font-size:clamp(20px,3vw,30px);margin-bottom:0;">Jira Cloud: <strong style="color:var(--accent);">~155 €/mes</strong> para 20 usuarios. Task Platform: <strong style="color:var(--sage);">299 € una vez.</strong></h2>
-    <p>Con Task Platform te amortizas en <strong>2 meses</strong>. A partir del tercer mes, es ahorro puro. Sin sorpresas en la factura cuando el equipo crece.</p>
+    <div class="mono">Coste real a 3 años · 15 usuarios</div>
+    <h2 style="font-size:clamp(20px,3vw,30px);margin-bottom:0;">Jira Standard: <strong style="color:var(--accent);">~4.400 €</strong> acumulados. Task Platform: <strong style="color:var(--sage);">299 € + ~30 €/año de VPS.</strong></h2>
+    <p>Amortización en <strong>2 meses</strong>. A 3 años el ahorro supera los <strong>4.000 €</strong> — y sin que la factura crezca si incorporas a alguien nuevo al equipo.</p>
   </div>
 </div>
 
@@ -784,8 +988,8 @@
 <section class="section" id="precios">
   <div class="container">
     <div class="mono section-label">Precios</div>
-    <h2>Pago único. Sin suscripción.</h2>
-    <p>Licencia perpetua. El software sigue funcionando aunque no renueves. La renovación anual opcional da acceso a actualizaciones y soporte.</p>
+    <h2>Un pago. Tuyo para siempre.</h2>
+    <p>Sin suscripción, sin coste por usuario, sin sorpresas. La licencia es perpetua — aunque no renueves el año siguiente, el software sigue corriendo en tu servidor.</p>
 
     <div class="pricing-grid">
       <!-- Community -->
@@ -795,12 +999,12 @@
           <h3>Libre</h3>
         </div>
         <div class="price-amount">0 €</div>
-        <p class="price-desc">Licencia AGPL v3. Código fuente disponible. Ideal para uso personal o proyectos open source.</p>
+        <p class="price-desc">Código fuente bajo AGPL v3. Para uso personal, proyectos internos open source o para evaluar la plataforma antes de comprar.</p>
         <ul class="price-features">
-          <li>Instalación ilimitada</li>
+          <li>Instalaciones ilimitadas</li>
           <li>Usuarios ilimitados</li>
-          <li>Todas las funcionalidades</li>
-          <li>Obligación AGPL (modificaciones públicas)</li>
+          <li>Todas las funcionalidades incluidas</li>
+          <li>Modificaciones deben publicarse (AGPL)</li>
         </ul>
         <a href="https://github.com" class="btn btn-ghost" style="justify-content:center;">Ver en GitHub</a>
       </div>
@@ -809,17 +1013,18 @@
       <div class="price-card featured">
         <div>
           <div class="price-badge">Más popular</div>
-          <h3>Starter</h3>
+          <h3>Team</h3>
         </div>
         <div class="price-amount">299 € <span>pago único</span></div>
-        <p class="price-desc">Licencia comercial. Sin obligaciones AGPL. Para equipos de hasta 15 usuarios.</p>
+        <p class="price-desc">Para equipos de hasta 15 personas. Licencia comercial — sin obligaciones AGPL, código cerrado, listo para uso profesional.</p>
         <ul class="price-features">
           <li>Hasta 15 usuarios</li>
-          <li>Licencia comercial (sin AGPL)</li>
-          <li>1 año de actualizaciones</li>
-          <li>Soporte por email</li>
+          <li>Licencia comercial perpetua</li>
+          <li>1 año de actualizaciones incluido</li>
+          <li>Soporte por email (respuesta en 48 h)</li>
+          <li>El software sigue funcionando si no renuevas</li>
         </ul>
-        <a href="#contacto" class="btn btn-primary" style="justify-content:center;">Comprar licencia →</a>
+        <a href="#contacto" class="btn btn-primary" style="justify-content:center;">Obtener licencia →</a>
       </div>
 
       <!-- Business -->
@@ -829,12 +1034,13 @@
           <h3>Ilimitado</h3>
         </div>
         <div class="price-amount">599 € <span>pago único</span></div>
-        <p class="price-desc">Usuarios ilimitados. Para empresas con equipos grandes o múltiples departamentos.</p>
+        <p class="price-desc">Usuarios y proyectos ilimitados. Para organizaciones en crecimiento o con múltiples equipos en el mismo servidor.</p>
         <ul class="price-features">
           <li>Usuarios ilimitados</li>
-          <li>Licencia comercial (sin AGPL)</li>
-          <li>1 año de actualizaciones</li>
-          <li>Soporte prioritario</li>
+          <li>Licencia comercial perpetua</li>
+          <li>1 año de actualizaciones incluido</li>
+          <li>Soporte prioritario (respuesta en 24 h)</li>
+          <li>El software sigue funcionando si no renuevas</li>
         </ul>
         <a href="#contacto" class="btn btn-ghost" style="justify-content:center;">Contactar →</a>
       </div>
@@ -846,19 +1052,19 @@
           <h3>Revendedor</h3>
         </div>
         <div class="price-amount">199 € <span>/ licencia</span></div>
-        <p class="price-desc">Para consultoras e integradores IT que quieran ofrecer Task Platform a sus clientes.</p>
+        <p class="price-desc">Para consultoras e integradores IT que despliegan Task Platform en las instalaciones de sus clientes y quieren un margen de reventa.</p>
         <ul class="price-features">
-          <li>Precio mayorista por licencia Business</li>
-          <li>Revendéla a tu cliente al precio que decidas</li>
-          <li>Soporte técnico incluido para el partner</li>
-          <li>Sin mínimo de licencias</li>
+          <li>Precio mayorista sobre licencia Business</li>
+          <li>Pon tú el precio final a tu cliente</li>
+          <li>Soporte técnico directo al partner</li>
+          <li>Sin pedido mínimo</li>
         </ul>
         <a href="#contacto" class="btn btn-ghost" style="justify-content:center;">Ser partner →</a>
       </div>
     </div>
 
     <p style="margin-top:24px;font-size:13px;color:var(--muted-2);text-align:center;">
-      Renovación opcional (año 2+): 99 €/año para actualizaciones y soporte. Si no renuevas, el software sigue funcionando.
+      Renovación opcional (año 2+): <strong style="color:var(--muted);">99 €/año</strong> por actualizaciones y soporte continuado. Si decides no renovar, tu instalación sigue funcionando exactamente igual que el día que la compraste.
     </p>
   </div>
 </section>
