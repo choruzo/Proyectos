@@ -18,6 +18,12 @@ docker compose up --build -d
 - Admin UI (solo admin): http://localhost:8080/admin/users
 - API (docs): http://localhost:8000/docs
 
+## Notas de seguridad (producción)
+- Cambia **todas** las credenciales/secretos de `.env` (especialmente `POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_PASSWORD`).
+- Despliega detrás de **HTTPS** y configura `REFRESH_COOKIE_SECURE=true` (y `CORS_ORIGINS` con el dominio HTTPS).
+- Postgres está mapeado a `127.0.0.1:5432` por defecto; en producción, lo recomendado es **no publicar** ese puerto.
+- Revisa CVEs de imágenes regularmente (p. ej. `docker scout cves ...`) y reconstruye con base images actualizadas.
+
 ## Demo
 Recorrido rápido de la app (generado con Playwright):
 

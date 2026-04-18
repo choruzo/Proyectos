@@ -29,13 +29,12 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     access_token = create_access_token(user_id=user.id)
     refresh_token = create_refresh_token(user_id=user.id)
 
-    # Refresh token cookie (httpOnly). In local LAN we keep secure=False.
     response.set_cookie(
         key=settings.refresh_cookie_name,
         value=refresh_token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.refresh_cookie_secure,
         path="/",
     )
 
@@ -76,7 +75,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         value=new_refresh,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.refresh_cookie_secure,
         path="/",
     )
 

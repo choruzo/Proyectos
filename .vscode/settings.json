@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^git add task-platform/; git status$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
