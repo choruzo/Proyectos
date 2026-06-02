@@ -1,4 +1,4 @@
-# CI/CD Pipeline - GALTTCMC
+# CI/CD Pipeline 
 
 Pipeline automatizado para monitorización de tags Git, compilación, análisis SonarQube y despliegue en vCenter/VM.
 
@@ -75,11 +75,11 @@ chmod +x build_rpm.sh
 ./build_rpm.sh
 
 # 2. Copiar RPM a la máquina objetivo
-scp ~/rpmbuild/RPMS/noarch/cicd-galttcmc-*.rpm YOUR_USER@YOUR_PIPELINE_HOST_IP:/tmp/
+scp ~/rpmbuild/RPMS/noarch/cicd*.rpm YOUR_USER@YOUR_PIPELINE_HOST_IP:/tmp/
 
 # 3. Instalar en la máquina objetivo
 ssh YOUR_USER@YOUR_PIPELINE_HOST_IP
-sudo rpm -ivh /tmp/cicd-galttcmc-*.rpm
+sudo rpm -ivh /tmp/cicd*.rpm
 
 # 4. Configurar credenciales
 cd /home/YOUR_USER/cicd
@@ -101,7 +101,7 @@ sudo systemctl start cicd.service
 - ✅ Generación automática de claves SSH
 - ✅ Instalación del servicio systemd
 - ✅ Facilita actualizaciones y desinstalación
-- ✅ Auditoría completa de lo instalado (`rpm -ql cicd-galttcmc`)
+- ✅ Auditoría completa de lo instalado (`rpm -ql cicd`)
 
 **Más información:** Ver [RPM-BUILD-GUIDE.md](RPM-BUILD-GUIDE.md)
 
@@ -435,7 +435,7 @@ git:
 
 sonarqube:
   url: https://YOUR_SONARQUBE_SERVER
-  project_key: GALTTCMC
+  project_key: 
   thresholds:
     coverage: 80.0
     bugs: 0
@@ -575,7 +575,7 @@ ls -lt logs/compile_*.log | head -1 | awk '{print $NF}' | xargs tail -100
 ./scripts/compile.sh validate      # Validar ISO generado
 
 # Verificar que existe el script de build
-ls -la /home/YOUR_USER/GALTTCMC/Development_TTCF/ttcf/utils/dvds/build_DVDs.sh
+ls -la /home/YOUR_USER//DATA/DATA/DATA/dvds/DATA.sh
 ```
 
 ### SonarQube rechaza el análisis
