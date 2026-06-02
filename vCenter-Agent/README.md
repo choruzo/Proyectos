@@ -1,80 +1,161 @@
 # 🤖 vCenter Agent System - Multi-Agent AI Platform
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12 recommended](https://img.shields.io/badge/python-3.12%20recommended-blue.svg)](https://www.python.org/downloads/)
 [![Flask](https://img.shields.io/badge/flask-3.0+-green.svg)](https://flask.palletsprojects.com/)
-[![LangChain](https://img.shields.io/badge/langchain-0.3.27+-orange.svg)](https://python.langchain.com/)
+[![LangGraph Runtime](https://img.shields.io/badge/langgraph-runtime-blueviolet.svg)](https://www.langchain.com/langgraph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> A comprehensive AI-powered multi-agent system for intelligent vCenter management and documentation consultation, featuring advanced RAG (Retrieval-Augmented Generation), MCP (Model Context Protocol) integration, and enterprise-grade security.
+> AI platform for vCenter operations and technical documentation queries, with LangGraph orchestration, hybrid RAG, native MCP tool execution, predictive ML, and automated operational reporting.
 
 **Key Highlights**:
-- 🧠 **Dual AI Agents**: vCenter Specialist + Documentation Consultant
-- 🔍 **Advanced RAG**: Hybrid ChromaDB + BM25 semantic search
-- 🌐 **Web Interface**: Real-time SSE streaming chat, Markdown rendering, admin dashboard, monitoring
-- 🔐 **Enterprise Security**: Audit trails, structured logging, role-based access
-- ⚡ **Performance**: Connection pooling, caching, optimized queries
-- 🧭 **Smart Routing**: 4-layer query classifier (regex + intent + scoring + LLM)
-- 📊 **MCP Integration**: 29 standardized tools for vCenter operations (v3.0)
+- 🧠 **LangGraph-first runtime**: orchestrator, vCenter agent, and documentation agent run as persistent graphs with SQLite checkpointing
+- 🔧 **Native tool execution**: progressive tool selection and provider-native tool calling in `server/tool_runtime.py`
+- 🔍 **Advanced RAG**: ChromaDB + BM25 hybrid retrieval with query expansion, reranking, and retrieval metrics
+- 🌐 **Web interface**: SSE streaming chat, admin dashboard, advanced monitoring, and operational panels
+- 📋 **Operational reporting**: daily PDF reports, historical trend charts, AI commentary, and admin-triggered generation
+- 🤖 **Predictive ML already in use**: data foundation + saturation prediction + workload classification + incident labeling
+- 🔌 **Multi-provider LLM**: Ollama and `llama_cpp` via internal adapters in `llm_factory.py`
+- 🔐 **Enterprise controls**: structured logging, audit trail, RBAC, CSRF protection, and session management
 
 ## 🌟 Features
 
 ### 🔧 vCenter Agent - VMware Operations
-- **Natural Language Interface**: Talk to your vCenter infrastructure in plain language
-- **29 MCP Tools (v3.0)**: Standardized operations across 6 groups — VMs, hosts, datastores, snapshots, reconfiguration, ESXi direct monitoring, events/alarms
-- **User Isolation**: Per-user VM namespaces and VLAN mapping
-- **Connection Pooling**: Optimized pyVmomi connections with automatic cleanup
-- **Dual Model Architecture**: Query formatter (gpt-oss:20b) + executor (gpt-oss:20b)
-- **Real-time Monitoring**: Live metrics from ESXi hosts and VMs
-- **Advanced Operations**:
-  - VM deployment from templates (single/multi-MCU environments)
-  - Power management (on/off/reset/suspend)
-  - Resource reporting and cleanup (obsolete VM detection)
-  - Performance metrics export
-  - Datastore browsing and management
+- **LangGraph-backed runtime**: the vCenter agent now runs on `src/core/agent_graph.py` with persistent per-user threads and checkpointing in `data/lg_state.db`
+- **Native tool runtime**: tools are selected and executed through `server/tool_runtime.py`, with progressive disclosure, JSON-schema generation, and explicit confirmation for destructive actions
+- **MCP catalog for VMware operations**: VM lifecycle, snapshots, reconfiguration, ESXi direct monitoring, datastore browsing, alarms, and events
+- **User isolation**: per-user VM namespaces, session abbreviations, and conversation state
+- **Connection pooling**: optimized pyVmomi reuse with automatic cleanup
+- **Multi-provider LLM**: Ollama or `llama_cpp` through `src/utils/llm_factory.py` + `src/utils/model_adapters.py`
+- **Advanced operations**:
+  - VM deployment from templates
+  - Power management and cleanup
+  - Resource and datastore reporting
+  - ESXi status and performance queries
+  - Snapshot, network, and VM reconfiguration workflows
 
 ### 📚 Documentation Consultant - Advanced RAG v2.4
-- **Hybrid Retrieval**: ChromaDB vector search + BM25 keyword matching with adaptive alpha
-- **Query Expansion**: 62 term families (VMware + project tools), bidirectional expansion
-- **Smart Reranking**: 12 final results from 40 candidates (term_freq with Spanish stop-word filtering + length + position)
-- **Enhanced BM25**: Indexes page content + file name + section headers — improves tool-name retrieval
-- **Context Window**: `num_ctx=16384` for Ollama (default 4096 silently truncates RAG context >5500 tokens)
-- **Low Temperature**: `temperature=0.1` for factual, hallucination-resistant RAG responses
-- **Source Citation**: Automatic references in format `file.md#Section`
-- **Folder Filtering**: Strict / boosting / global search modes
-- **Embedding Cache**: LRU cache (1000 queries, ~30% faster on repeats)
-- **Multi-format**: PDF, MD, TXT document support with SHA1 manifest tracking
-- **Metrics Logging**: JSONL retrieval metrics per query (`logs/retrieval_metrics.jsonl`)
+- **LangGraph doc agent**: retrieval/generation flow compiled in `src/core/doc_agent_graph.py`
+- **Hybrid retrieval**: ChromaDB vector search + BM25 keyword search with adaptive alpha
+- **Query expansion**: 62 term families (VMware + project tooling), bidirectional expansion
+- **Smart reranking**: top results are re-ranked before answer generation
+- **Folder-aware search modes**: strict / boosting / global
+- **Low-hallucination setup**: `num_ctx=16384`, `temperature=0.1`, and abstention path when retrieval is weak
+- **Source citation**: references in `file.md#Section` format
+- **Metrics logging**: per-query telemetry in `logs/retrieval_metrics.jsonl`
 
 ### 💬 Chat Interface
-- **Real-time Streaming**: SSE-based token streaming with routing indicator (`event: routing/token/done/heartbeat`)
-- **Markdown Rendering**: Full GFM via marked.js v15 — code blocks, tables, lists, bold, blockquotes
-- **Fallback**: `/chat` endpoint as automatic fallback if SSE unavailable
+- **Real-time streaming**: SSE-based token streaming with routing and heartbeat events
+- **Markdown rendering**: marked.js v15 renders code blocks, tables, lists, and citations after stream completion
+- **Fallback path**: legacy `/chat` endpoint remains available if SSE fails
 
 ### 🎯 Intelligent Orchestration
-- **4-Layer Query Classifier**: Regex patterns → intent detection → weighted scoring → LLM fallback
-- **Hybrid Routing**: agents.yaml keywords + `query_classifier.py` + LLM classification
-- **Heuristic Safety Net**: Fallback routing when LLM is unavailable (no silent failures)
-- **Dual Session System**: Flask sessions + SQLite persistence
-- **Context Preservation**: Per-user conversation memory with LangChain
-- **Agent Isolation**: Complete separation of tools and knowledge sources
-- **Performance**: <3s average response time for simple queries
+- **4-layer classifier**: keywords → critical regex → intent detection → weighted scoring → LLM fallback
+- **Sticky routing**: follow-up messages reuse the last agent for a short window, enabling natural multi-turn conversations
+- **Per-user persistence**: conversational state is stored by LangGraph checkpointer, not by classic LangChain memory buffers
+- **Agent isolation**: vCenter and documentation flows keep separate tools, state, and knowledge sources
+
+### 🧠 LangGraph Runtime - Migration Status
+- **Migration completed in production**:
+  - `src/api/orchestrator_graph.py` drives routing and sticky follow-ups
+  - `src/core/agent_graph.py` handles the vCenter workflow, native tool execution, and destructive-action confirmation
+  - `src/core/doc_agent_graph.py` manages the documentation retrieval/generation loop
+- **Provider wrappers removed from the main runtime**: `src/utils/llm_factory.py` now returns internal adapters such as `OllamaChatAdapter` and `OpenAICompatibleChatAdapter`
+- **ToolNode / bind_tools no longer drive the vCenter production flow**: the active path uses provider-native schemas from `ToolCatalog` and execution helpers in `server/tool_runtime.py`
+- **Compatibility remains where useful**: `server/mcp_tool_wrappers.py` is kept as an interoperability layer, but it is no longer the primary execution path
+- **LangChain still appears as support infrastructure**: `langchain_core.messages` remains useful for message objects and compatibility, while orchestration moved to LangGraph
 
 ### 🔐 Enterprise-Grade Security
-- **Authentication**: bcrypt password hashing with argon2 support
-- **Authorization**: Role-based access (admin/user) with permission inheritance
-- **Audit Logging**: Complete trail of user actions and system changes
-- **Rate Limiting**: Configurable API endpoint protection
-- **Session Security**: 30-minute timeout, secure token management
-- **Input Validation**: Comprehensive sanitization and XSS prevention
-- **Security Events**: Dedicated logging category for security analysis
+- **Authentication**: bcrypt password hashing and role-based access control
+- **Authorization**: admin/user separation with protected admin routes
+- **Audit logging**: complete user-action trail and security-specific logs
+- **Rate limiting and CSRF**: configurable endpoint protection and state-changing request validation
+- **Session security**: web session controls plus LangGraph thread cleanup
 
 ### 📊 Observability & Monitoring
-- **Structured Logging**: JSON logs categorized by type (API, audit, security, performance)
-- **Performance Metrics**: Request timing, resource usage, agent execution time
-- **Real-time Dashboards**: Admin interface with system health monitoring
-- **Log Rotation**: Automatic cleanup and archival of old logs
-- **Context Middleware**: Request tracking with correlation IDs
-- **Error Tracking**: Comprehensive error logging with stack traces
+- **Structured logging**: categorized JSON logs for API, audit, security, performance, business, and system events
+- **Performance telemetry**: request timing, agent progress, retrieval metrics, and ML logs
+- **Admin dashboards**: advanced ESXi monitoring, reports UI, statistics, and ML incident management
+- **Background automation**: historical collectors, report scheduler, and ML retraining jobs
+
+### 📋 Automated Daily Reports
+- **Scheduled generation**: `background_agents/report_scheduler.py` creates the operational PDF every day at **07:00**
+- **Admin web panel**: `/admin/reports` lists generated PDFs, supports download, and exposes **Generate Now**
+- **On-demand API**: `POST /api/admin/reports/generate` runs the report immediately and waits up to **900 seconds**
+- **Multi-source collection**: the PDF aggregates ESXi metrics, vCenter inventory, alarms, events, datastore state, licenses, log analysis, user activity, and TrueNAS telemetry
+- **7-day and historical trends**:
+  - `collect_weekly_trend()` builds the rolling 7-day view
+  - completed weeks are consolidated into `{host}_weekly_history.json`
+  - if `matplotlib` is available, the PDF adds historical trend charts without writing temporary image files
+- **ML-aware reports**: before rendering, the report agent refreshes cached ML outputs and can append:
+  - **ML Predictions — Resource Saturation (Beta)**
+  - **Workload Pattern Classification (ML)**
+- **AI commentary**: sections can include `AI Analysis` blocks generated by the configured model
+- **Fault tolerant**: source-specific failures are isolated so one subsystem does not abort the whole PDF
+- **Output**: `reports/informe_rendimiento_YYYY-MM-DD.pdf`
+- **Manual Trigger (Python)**:
+  ```python
+  from background_agents.performance_report_agent import PerformanceReportAgent
+  pdf = PerformanceReportAgent().run()
+  print(pdf)
+  ```
+- **Manual Trigger (API)**:
+  ```bash
+  curl -X POST http://localhost:5000/api/admin/reports/generate \
+       -H "Content-Type: application/json" --cookie "session=<admin-session>"
+  ```
+
+### 🤖 Predictive ML - Phases 0, 1, and 2 Operational
+
+The ML subsystem is no longer just in “data foundation”. Currently there is a **data pipeline**, **supervised prediction**, **unsupervised classification**, **incident labeling**, and **training automation**.
+
+#### Phase 0 — Data Foundation (operational)
+- **Extended retention**: `config/config.json` maintains a **30-day** history (`historical_retention_hours: 720`) while the dashboard still shows 24 h
+- **Parquet store**: `ml/data_store_builder.py` generates `data/ml_store/{host}/raw/*.parquet`
+- **Sanitization**: `ml/data_sanitizer.py` produces `processed/` with imputation, encoding, and `data_quality_flag`
+- **Incident labeling**:
+  - automatic queue in `data/ml_labels/pending_review.jsonl`
+  - confirmed dataset in `data/ml_labels/incidents.jsonl`
+  - admin UI at `/admin/ml-incidents`
+
+#### Phase 1 — Saturation Prediction (operational)
+- **Current model**: `LinearRegression` for CPU and memory
+- **Training**: `ml/model_trainer.py`
+- **Inference**: `ml/predictor.py`
+- **Output**: `data/ml_predictions/latest.json` + `logs/ml/predictions.jsonl`
+- **Main fields**:
+  - `predicted_48h`
+  - `predicted_7d`
+  - `hours_to_warning`
+  - `hours_to_critical`
+  - `confidence`
+- **API**: `GET /api/ml/predict/saturation`
+- **Automation**: `background_agents/ml_trainer_scheduler.py` runs daily Parquet rebuild and weekly retraining
+
+#### Phase 2 — Workload Pattern Classification (operational)
+- **Current model**: `K-Means` over aggregated hourly windows
+- **Implementation**: `ml/workload_classifier.py`
+- **Output**: `data/ml_predictions/latest_workload.json` + `logs/ml/workload_classifications.jsonl`
+- **Patterns**: `stable`, `office_hours`, `batch_nocturnal`, `erratic`, `saturated`, `underutilized`
+- **API**: `GET /api/ml/classify/workload`
+- **Integration**: classification also appears in the PDF when the feature is enabled
+
+#### Validation and Usage
+
+```bash
+# Validate the ML database
+python tests/validate_ml_data_foundation.py
+
+# The ML scheduler starts alongside the application
+python run.py
+```
+
+#### Pending Roadmap (Phases 3-5)
+
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **3** | Anomaly detection (Isolation Forest or similar) | Pending |
+| **4** | Advanced forecasting with seasonality (e.g. Prophet) | Pending |
+| **5** | Interactive predictions and trends dashboard | Pending |
 
 ## 📁 Project Structure
 
@@ -82,10 +163,13 @@
 vcenter_agent_system/
 ├── src/                         # Source code
 │   ├── core/                    # Core agent functionality
-│   │   ├── agent.py            # vCenter agent (29 MCP tools, LangChain integration)
-│   │   └── doc_consultant.py   # Doc agent (RAG system, semantic search)
+│   │   ├── agent.py            # vCenter agent entrypoint over LangGraph
+│   │   ├── agent_graph.py      # LangGraph runtime for vCenter + native tools
+│   │   ├── doc_consultant.py   # Doc agent entrypoint
+│   │   └── doc_agent_graph.py  # LangGraph retrieval/generation workflow
 │   ├── api/                     # Web API and routes
-│   │   └── main_agent.py       # Flask orchestrator (routing, sessions, auth)
+│   │   ├── main_agent.py       # Flask app, auth, admin, API routes
+│   │   └── orchestrator_graph.py # LangGraph supervisor for routing
 │   ├── auth/                    # Authentication system
 │   │   ├── auth_manager.py     # User management, bcrypt hashing
 │   │   ├── rate_limiter.py     # API rate limiting
@@ -107,11 +191,31 @@ vcenter_agent_system/
 │       ├── retrieval_metrics.py # JSONL retrieval metrics logging
 │       ├── structured_logger.py # Structured logging framework
 │       ├── logging_config.py   # Logging configuration
+│       ├── llm_factory.py      # Provider adapter factory (Ollama / llama_cpp)
+│       ├── model_adapters.py   # Internal chat/embedding adapters
 │       └── context_middleware.py # Request context tracking
 ├── server/                      # MCP Server integration
 │   ├── mcp_vcenter_server.py   # Standalone MCP server (stdio transport)
 │   ├── mcp_tool_registry.py    # Tool definitions and factory
-│   └── mcp_tool_wrappers.py    # LangChain tool wrappers
+│   ├── mcp_tool_wrappers.py    # Compatibility wrappers for integrations/tests
+│   └── tool_runtime.py         # Native tool selection/execution runtime
+├── background_agents/           # Autonomous background agents
+│   ├── performance_report_agent.py # Daily PDF report generator + ML/historical sections
+│   ├── report_scheduler.py     # APScheduler wrapper — triggers report at 07:00
+│   ├── ml_trainer_scheduler.py # Weekly retraining + daily Parquet rebuild
+│   ├── truenas_snmp_collector.py   # SNMP v3 collector for TrueNAS (ZFS, net, temp)
+│   └── __init__.py
+├── ml/                          # Predictive ML — phases 0, 1, and 2
+│   ├── __init__.py
+│   ├── data_store_builder.py   # Converts historical JSON → daily Parquet per host
+│   ├── migrate_historical_to_parquet.py # One-shot migration (7d → raw Parquets)
+│   ├── data_sanitizer.py       # Pipeline: raw/ → processed/ (imputation, encoding, flags)
+│   ├── migrate_raw_to_processed.py # Batch sanitization of existing Parquets
+│   ├── feature_builder.py      # Feature engineering for training
+│   ├── model_trainer.py        # Supervised saturation training
+│   ├── predictor.py            # Inference + prediction cache
+│   ├── workload_classifier.py  # K-Means workload pattern classification
+│   └── incident_labeler.py     # Atomic JSONL labeling + automatic candidate discovery
 ├── config/                      # Configuration files
 │   ├── config.json             # vCenter credentials, ESXi hosts
 │   ├── agents.yaml             # Agent routing keywords
@@ -130,7 +234,8 @@ vcenter_agent_system/
 ├── tests/                       # Integration tests
 │   ├── test_doc_agent.py       # Doc consultant tests
 │   ├── test_orchestrator.py    # Multi-agent routing tests
-│   └── test_vcenter_tools.py   # vCenter operation tests
+│   ├── test_vcenter_tools.py   # vCenter operation tests
+│   └── validate_ml_data_foundation.py # 4 checks Data Foundation (retención, Parquet, calidad, etiquetas)
 ├── unitary_test/                # Unit tests (188+ tests)
 │   ├── test_routing.py         # Orchestrator routing tests (39 tests)
 │   ├── test_query_classifier.py # 4-layer classifier tests (57 tests)
@@ -150,21 +255,31 @@ vcenter_agent_system/
 ├── scripts/                     # Utility scripts
 │   ├── log_maintenance.py      # Log rotation and cleanup
 │   └── setup_log_maintenance.ps1 # Windows log maintenance setup
-├── reports/                     # Generated reports (ZIP exports)
+├── reports/                     # Generated PDF reports (manual and scheduled)
+├── data/                        # Runtime data
+│   ├── chroma_db/              # ChromaDB vector store (persistent)
+│   ├── ml_store/               # Parquet store for ML — {host}/raw/ + {host}/processed/
+│   ├── ml_labels/              # Incident labels — incidents.jsonl + pending_review.jsonl
+│   ├── ml_models/              # Trained models (.pkl + metadata)
+│   └── ml_predictions/         # latest.json + latest_workload.json
 ├── run.py                       # Main entry point (Flask server)
 ├── setup.py                     # Package setup (vcenter-agent command)
 ├── requirements_oficial.txt     # Production dependencies
 ├── pytest.ini                   # Pytest configuration
 ├── .coveragerc                  # Coverage settings
 │
-├── Documentation/               # Project documentation
-│   ├── CLAUDE.md               # Development guide for Claude Code
-│   ├── AGENTS.md               # Multi-agent architecture guide
-│   ├── IMPLEMENTATION_SUMMARY.md # System implementation details
-│   ├── LOGGING_IMPLEMENTATION_SUMMARY.md # Logging system docs
-│   ├── MCP_SERVER_IMPLEMENTATION.md # MCP integration guide
-│   ├── RAG_IMPROVEMENT_SUMMARY.md # RAG optimization history
-│   └── RAG_INVESTIGATION_REPORT.md # Latest RAG analysis (2026-01-24)
+├── DOCS_proyect/                # Technical project documentation
+│   ├── API/                    # REST API reference
+│   ├── Background_agent/       # Background agents (ESXi, TrueNAS SNMP)
+│   ├── Chat/                   # Chat UI architecture and guides
+│   ├── Login_Autentificación/  # Authentication system docs
+│   ├── MCP/                    # MCP architecture and security
+│   ├── Mejoras/                # Proposed improvements
+│   ├── RAG/                    # RAG v2.4 hybrid system docs
+│   └── vCenter_Agent/          # vCenter agent docs (architecture, pool, tools, security)
+├── Other_docs/                  # Supplementary documentation
+│   ├── Implementation/         # Implementation summaries and change tracking
+│   └── Investigaciones/        # Research and analysis documents
 │
 └── GitHub Copilot Agents/       # Custom agents for GitHub Copilot CLI
     ├── COPILOT_AGENTS.md        # Agent configuration and usage
@@ -178,7 +293,7 @@ vcenter_agent_system/
 
 ### Prerequisites
 
-- **Python 3.8+** (tested on 3.9, 3.10, 3.11)
+- **Python 3.9+** (**3.12 recommended**, aligned with production)
 - **Ollama** installed and running ([https://ollama.ai](https://ollama.ai))
 - **VMware vCenter** access (for vCenter agent)
 - **Git** for cloning the repository
@@ -211,15 +326,14 @@ vcenter_agent_system/
    pip install -r unitary_test/requirements_test.txt
    ```
 
-4. **Install Ollama models**
+4. **Install Ollama models** (or configure `llama_cpp`)
    ```bash
-   # Recommended models
-   ollama pull gpt-oss:20b      # Main executor model (8GB RAM)
-   ollama pull gpt-oss:20b       # Query formatter (1.7GB RAM)
+    # Option A: Ollama (local inference)
+    ollama pull gpt-oss:20b      # Main executor model
 
-   # Alternative models
-   ollama pull llama3.2:3b      # Lighter alternative
-   ollama pull mistral:7b       # Alternative executor
+    # Option B: llama.cpp server (OpenAI-compatible API)
+    # Edit config/config.json → llm_provider.provider: "llama_cpp"
+    # and set base_url + model_name for your llama-server instance
    ```
 
 5. **Configure vCenter connection**
@@ -407,6 +521,18 @@ tail -f logs/security/security.log
 - `GET /api/logs` - Access structured logs
 - `POST /api/maintenance` - System maintenance operations
 
+#### Report API Routes (admin only)
+- `GET /admin/reports` - Web panel: list all generated PDF reports with download links and **Generate Now** button
+- `POST /api/admin/reports/generate` - Trigger immediate report generation (runs in a worker thread, timeout 900 s)
+- `GET /api/admin/reports/download/<filename>` - Download a specific PDF report by filename
+
+#### ML API Routes
+- `GET /admin/ml-incidents` - Admin UI for incident labeling and candidate review
+- `GET /api/ml/predict/saturation` - Return cached or on-demand saturation forecasts (single host or all enabled hosts)
+- `GET /api/ml/classify/workload` - Return cached or on-demand workload classification (single host or all enabled hosts)
+- `GET /api/ml/incidents/candidates` - List pending ML incident candidates
+- `POST /api/ml/incidents/collect` - Query vCenter and append new incident candidates for review
+
 ## Configuration
 
 ### vCenter Configuration (`config/config.json`)
@@ -589,6 +715,10 @@ python demo_rag_improvement.py
 # - Semantic expansion (3 keywords → 36 terms)
 # - Search results with relevance scores
 # - Before/after comparison
+
+# ML Data Foundation validation (4 checks)
+python tests/validate_ml_data_foundation.py
+# Checks: retention ≥14 days | Parquet store | sanitization quality | labels file
 ```
 
 ## 📊 Performance & Benchmarks
@@ -609,7 +739,7 @@ python demo_rag_improvement.py
 - Base Flask app: ~150 MB
 - gpt-oss:20b model: ~8 GB
 - gpt-oss:20b model: ~1.7 GB
-- Document index (Whoosh): ~5-50 MB (depends on doc count)
+- Document index / vector store: ~5-50 MB (depends on corpus size and embeddings)
 - **Total peak**: ~10 GB
 
 **CPU**:
@@ -703,144 +833,118 @@ python setup.py sdist bdist_wheel
 ### Multi-Agent System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Interface (Flask)                   │
-│                    http://localhost:5000                      │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Orchestrator (main_agent.py)                    │
-│   ┌────────────────────────────────────────────────────┐    │
-│   │  Routing Logic (Hybrid)                            │    │
-│   │  1. Keyword Match (agents.yaml)                    │    │
-│   │  2. LLM Classification (fallback)                  │    │
-│   └────────────┬───────────────────────────┬───────────┘    │
-└────────────────┼───────────────────────────┼────────────────┘
-                 │                           │
-        ┌────────▼────────┐         ┌───────▼────────┐
-        │  vCenter Agent  │         │   Doc Agent    │
-        │   (agent.py)    │         │(doc_consultant)│
-        └────────┬────────┘         └───────┬────────┘
-                 │                           │
-    ┌────────────▼────────────┐   ┌─────────▼──────────┐
-    │   MCP Tool Registry     │   │   RAG Retriever    │
-    │  (29 vCenter tools)     │   │ (semantic search)  │
-    └────────────┬────────────┘   └─────────┬──────────┘
-                 │                           │
-    ┌────────────▼────────────┐   ┌─────────▼──────────┐
-    │   pyVmomi (vCenter)     │   │  Whoosh Index      │
-    │   Connection Pool       │   │  (Markdown docs)   │
-    └─────────────────────────┘   └────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    Flask / SSE Web Layer                     │
+│               auth, admin, reports, chat routes              │
+└───────────────────────┬──────────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────────────┐
+│                LangGraph Orchestrator Graph                  │
+│        classify_task + sticky routing + per-user state       │
+└───────────────────────┬───────────────────────┬──────────────┘
+                        │                       │
+             ┌──────────▼──────────┐  ┌────────▼─────────┐
+             │   vCenter Graph     │  │   Doc Graph      │
+             │ agent_graph.py      │  │ doc_agent_graph  │
+             └──────────┬──────────┘  └────────┬─────────┘
+                        │                      │
+        ┌───────────────▼──────────────┐  ┌────▼─────────────────────┐
+        │ ToolCatalog + ToolRuntime    │  │ Hybrid Retriever v2.4    │
+        │ provider-native tool calling │  │ ChromaDB + BM25 + rerank │
+        └───────────────┬──────────────┘  └────┬─────────────────────┘
+                        │                      │
+             ┌──────────▼─────────┐   ┌───────▼─────────────┐
+             │ pyVmomi + MCP      │   │ docs/ + Chroma store│
+             │ connection pool    │   │ + retrieval metrics │
+             └────────────────────┘   └─────────────────────┘
 ```
 
 ### RAG System Architecture (Documentation Agent)
 
 ```
-User Query: "¿Qué problemas hay con las VMs?"
+User Query: "What problems are there with the VMs?"
      ↓
-┌────────────────────────────────────────────────┐
-│  1. Query Normalization                        │
-│     - Remove: "según", "la", "en"              │
-│     - Remove: "según la documentación"         │
-│     - Extract: ["problemas", "vms"]            │
-└────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  1. Search Mode Detection                            │
+│     strict / boosting / global                      │
+└────────────────┬─────────────────────────────────────┘
                  ↓
-┌────────────────────────────────────────────────┐
-│  2. Semantic Expansion (7 families)            │
-│     problemas → {error, fallo, limitación,     │
-│                  consideración, requisito...}  │
-│     vms → {vm, máquina virtual, virtual        │
-│            machine, máquinas virtuales...}     │
-│     Result: 3 keywords → 36 expanded terms     │
-└────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  2. Query Normalization + Expansion                  │
+│     stop-words, filler phrases, 62 term families    │
+└────────────────┬─────────────────────────────────────┘
                  ↓
-┌────────────────────────────────────────────────┐
-│  3. Chunk-based Search (Whoosh)                │
-│     - Search at paragraph level                │
-│     - Include section metadata                 │
-│     - Max 800 chars per fragment               │
-└────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  3. Hybrid Retrieval                                │
+│     ChromaDB vector search + BM25 keyword scoring   │
+└────────────────┬─────────────────────────────────────┘
                  ↓
-┌────────────────────────────────────────────────┐
-│  4. Relevance Scoring                          │
-│     - Direct keyword match: weight 3.0         │
-│     - Semantic match: weight 1.5               │
-│     - Important section: weight 5.0            │
-│     - Sort by total relevance                  │
-└────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  4. Score Fusion + Folder Filtering                  │
+│     adaptive alpha + strict/boosted folders         │
+└────────────────┬─────────────────────────────────────┘
                  ↓
-┌────────────────────────────────────────────────┐
-│  5. Context Assembly                           │
-│     - Top 5 documents                          │
-│     - 5 paragraphs per doc                     │
-│     - 800 chars per paragraph                  │
-│     - Total: ~20KB context                     │
-└────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  5. Reranking                                        │
+│     term frequency + length + position heuristics   │
+└────────────────┬─────────────────────────────────────┘
                  ↓
-┌────────────────────────────────────────────────┐
-│  6. LLM Response Generation                    │
-│     Model: gpt-oss:20b (8K context window)     │
-│     Prompt: Strict RAG (no hallucination)      │
-│     Output: Answer + Sources (file.md#Section) │
-└────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  6. Generate / Abstain                               │
+│     factual answer with sources or safe abstention  │
+└──────────────────────────────────────────────────────┘
 ```
 
 **RAG Metrics (as of 2026-01-24)**:
 - False Negative Rate: **~20%** (down from 60%, target: <15%)
 - Average Relevance Score: **12.5/20**
-- Context Utilization: **25%** (20KB of 8K tokens ~= 80KB capacity)
+- Context Utilization: improved with `num_ctx=16384`
 - Query Response Time: **3-8 seconds**
 - Test Coverage: **77 tests** (28 RAG-specific, 67 passing)
 
 ### MCP Integration Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│     vCenter Agent (agent.py)            │
-│  ┌───────────────────────────────────┐  │
-│  │   LangChain Tool Interface        │  │
-│  │  (AgentExecutor with tools)       │  │
-│  └─────────────┬─────────────────────┘  │
-│                ↓                         │
-│  ┌───────────────────────────────────┐  │
-│  │   MCP Tool Registry               │  │
-│  │  - create_tool_functions()        │  │
-│  │  - Per-user context               │  │
-│  │  - User mapping                   │  │
-│  └─────────────┬─────────────────────┘  │
-│                ↓                         │
-│  ┌───────────────────────────────────┐  │
-│  │   MCP Tool Wrappers               │  │
-│  │  @tool decorators for LangChain   │  │
-│  └─────────────┬─────────────────────┘  │
-│                ↓                         │
-│  ┌───────────────────────────────────┐  │
-│  │   vCenter Tools (vcenter_tools.py)│  │
-│  │  - Connection pooling             │  │
-│  │  - pyVmomi operations             │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ vCenter LangGraph node                      │
+│ - builds ToolCatalog per user/session       │
+│ - selects active groups by query/follow-up  │
+└─────────────────────┬───────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────┐
+│ ToolRuntime                                 │
+│ - provider-native JSON schemas              │
+│ - active tool subset (progressive disclosure)│
+│ - safety level + destructive confirmations  │
+└─────────────────────┬───────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────┐
+│ MCP registry + pyVmomi wrappers             │
+│ - create_tool_functions(username, session)  │
+│ - connection pool reuse                     │
+│ - per-user context isolation                │
+└─────────────────────────────────────────────┘
 
 Standalone MCP Server (optional):
 ┌─────────────────────────────────────────┐
 │  mcp_vcenter_server.py                  │
 │  - Stdio transport                      │
-│  - Exposes all 29 tools via MCP (v3.0)  │
+│  - Exposes the vCenter MCP catalog      │
 │  - Can be used by external MCP clients  │
 └─────────────────────────────────────────┘
 ```
 
-**MCP Tools Available** (29 total — v3.0):
+**MCP Tool Groups**:
 
 | Group | Tools |
 |-------|-------|
-| Core VM (15) | `get_templates`, `get_hosts_tool`, `get_datastores_tool`, `deploy_dev_env`, `deploy_dev_env_2mcu`, `list_vms_for_user`, `delete_vms_tool`, `clone_mcu_template`, `list_vms_by_host_tool`, `list_all_vms_tool`, `generate_resource_report_tool`, `get_obsolete_vms_tool`, `export_vm_performance_tool`, `power_operations_tool`, `get_vm_details_tool` |
-| Snapshots (4) | `create_snapshot_tool`, `list_snapshots_tool`, `revert_snapshot_tool`, `delete_snapshot_tool` |
-| VM Reconfig (3) | `reconfigure_vm_tool`, `rename_vm_tool`, `change_vm_network_tool` |
-| ESXi Direct (3) | `get_esxi_status_tool`, `get_esxi_resources_tool`, `get_esxi_performance_tool` |
-| Datastore (2) | `browse_datastore_tool`, `get_all_datastores_tool` |
-| Events/Alarms (2) | `get_vm_events_tool`, `get_active_alarms_tool` |
+| Core VM | Template listing, deployment, clone, delete, power operations, VM detail and cleanup/report tools |
+| Snapshots | Create, list, revert, and delete snapshots |
+| VM Reconfiguration | CPU/RAM/network changes, rename, NIC management |
+| ESXi Direct | Host status, resources, and performance |
+| Datastore | Browse and enumerate datastores |
+| Events / Alarms | VM events and active alarms |
 
 ### Connection Management
 
@@ -867,21 +971,20 @@ si = get_user_si(username)  # ALWAYS use this, never get_si()
 session['username'] = 'jmartinb'
 session['role'] = 'admin'
 
-# System 2: SQLite Persistence (cross-restart)
-sessions_db:
-  - session_id (primary key)
-  - username
-  - created_at
-  - last_activity
-  - data (JSON)
+# System 2: LangGraph checkpointer (conversational state)
+data/lg_state.db:
+  - thread_id por usuario/agente
+  - message history
+  - sticky routing state
+  - pending confirmations / retrieval state
 ```
 
 ## Dependencies
 
 ### Core Framework
 - **Flask**: Web framework and API server
-- **LangChain**: AI agent framework (v0.3.27+)
-- **langchain-ollama**: Ollama integration (v0.3.7+)
+- **LangGraph**: graph orchestration and checkpointed conversational state
+- **langchain-core**: message objects and compatibility primitives
 - **Ollama**: Local LLM runtime
 
 ### vCenter Agent Dependencies
@@ -890,9 +993,23 @@ sessions_db:
 - **bcrypt**: Password hashing and security
 
 ### Documentation Agent Dependencies
-- **python-docx**: Document processing and extraction
-- **Whoosh**: Full-text search indexing engine
-- **Markdown**: Document formatting and processing
+- **ChromaDB**: Persistent vector store
+- **pypdf / Markdown / TXT loaders**: Multi-format document ingestion
+- **Custom BM25 retriever**: keyword scoring on top of the same corpus
+
+### Predictive ML Dependencies
+- **pyarrow** (≥14.0.0): Parquet engine for the ML data store (`data/ml_store/`)
+- **pandas**: DataFrame manipulation and transformation (sanitization, imputation)
+- **scikit-learn**: LinearRegression, K-Means, and model persistence
+
+### Reporting Dependencies
+- **reportlab**: PDF generation
+- **APScheduler**: report scheduling and retraining
+- **matplotlib**: optional historical charts in the PDF
+
+### LLM Provider Dependencies
+- **Internal adapters**: `OllamaChatAdapter` and `OpenAICompatibleChatAdapter`
+- **llama_cpp / llama-server**: OpenAI-compatible endpoint for chat and embeddings
 
 ### System Dependencies
 - **PyYAML**: Configuration management
@@ -1203,38 +1320,48 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 |----------|-------------|
 | **README.md** (this file) | Complete project overview and quick start |
 | **CLAUDE.md** | Development guide for Claude Code IDE |
-| **AGENTS.md** | Multi-agent architecture and development guide |
-| **IMPLEMENTATION_SUMMARY.md** | System implementation details and patterns |
-| **LOGGING_IMPLEMENTATION_SUMMARY.md** | Structured logging system documentation |
-| **MCP_SERVER_IMPLEMENTATION.md** | MCP integration architecture and tools |
+| **.github/copilot-instructions.md** | Complete development guide for GitHub Copilot |
 
-### RAG Documentation
+### DOCS_proyect/ (Technical Documentation)
 
 | Document | Description |
 |----------|-------------|
-| **RAG_IMPROVEMENT_SUMMARY.md** | Historical RAG improvements and optimizations |
-| **RAG_INVESTIGATION_REPORT.md** | Latest RAG analysis (2026-01-24) |
-| **Resumen_ivestigacion_RAG.md** | RAG investigation summary (Spanish) |
+| **DOCS_proyect/API/API_REFERENCE.md** | Complete REST API endpoint reference |
+| **DOCS_proyect/Background_agent/BACKGROUND_AGENTS_TECHNICAL_DOCUMENTATION.md** | Background agents (ESXi historical, TrueNAS SNMP) |
+| **DOCS_proyect/Chat/ARQUITECTURA_CHAT.md** | SSE streaming architecture and Markdown rendering |
+| **DOCS_proyect/Chat/GUIA_FUNCIONAMIENTO.md** | Chat usage guide |
+| **DOCS_proyect/Chat/GUIA_IMPLEMENTACION_TECNICA.md** | Technical implementation guide |
+| **DOCS_proyect/Login_Autentificación/AUTENTICACION.md** | Authentication system and session management |
+| **DOCS_proyect/MCP/MCP_TECHNICAL_DOCUMENTATION.md** | MCP architecture, tool registry, security patterns |
+| **DOCS_proyect/Mejoras/MEJORAS_PROPUESTAS.md** | Proposed technical improvements |
+| **DOCS_proyect/Mejoras/MEJORAS_PROPUESTAS_funcionalidad.md** | Proposed functional improvements |
+| **DOCS_proyect/RAG/HYBRID_SYSTEM_README.md** | RAG v2.4 hybrid system (ChromaDB + BM25) |
+| **DOCS_proyect/RAG/RAG_TECHNICAL_DOCUMENTATION.md** | RAG pipeline deep-dive |
+| **DOCS_proyect/vCenter_Agent/ARQUITECTURA.md** | vCenter agent architecture |
+| **DOCS_proyect/vCenter_Agent/CONNECTION_POOL.md** | Connection pool design |
+| **DOCS_proyect/vCenter_Agent/MCP_TOOLS.md** | MCP tool catalog reference |
+| **DOCS_proyect/vCenter_Agent/SEGURIDAD.md** | Security model |
 
-### GitHub Copilot CLI Agents
+### Other_docs/ (Supplementary Documentation)
 
 | Document | Description |
 |----------|-------------|
-| **COPILOT_AGENTS_QUICKSTART.md** | Quick start guide with examples ⭐ START HERE |
-| **COPILOT_AGENTS.md** | Complete agent configuration reference |
-| **AGENT_RAG_ENGINEER.md** | RAG optimization specialist (8.7 KB) |
-| **AGENT_VCENTER_SPECIALIST.md** | vCenter operations expert (13.4 KB) |
-| **AGENT_TEST_EXPERT.md** | Testing automation specialist (15.8 KB) |
+| **Other_docs/Implementation/LOGGING_IMPLEMENTATION_SUMMARY.md** | Structured logging system |
+| **Other_docs/Implementation/STICKY_ROUTING_IMPLEMENTATION.md** | Conversational memory and sticky routing |
+| **Other_docs/Implementation/IMPLEMENTACION_AUTH_MODULE.md** | Auth module implementation |
+| **Other_docs/Implementation/SQLITE_MIGRATION.md** | SQLite migration guide |
+| **Other_docs/Implementation/SUPERUSER_IMPLEMENTATION_SUMMARY.md** | Superuser role implementation |
+| **Other_docs/Implementation/TESTING_GUIDE.md** | Testing guide and best practices |
+| **Other_docs/Investigaciones/OLLAMA_CONCURRENCY_ASYNC_ANALYSIS.md** | Ollama concurrency and async analysis |
 
-### Project Documentation (docs/)
+### Know-How Documentation (docs/)
 
-Technical documentation in Markdown format:
+Technical documentation indexed by the RAG agent:
 - `Vcenter.md` - vCenter installation and configuration
 - `Esxi_desarrollo.md` - ESXi development environment
-- `MCP_SERVER_IMPLEMENTATION.md` - MCP server architecture
 - `Configuracion_templates.md` - Template configuration
 - `Monitorización.md` - Monitoring and performance
-- Additional guides for DNS, Git, TrueNAS, etc.
+- Additional guides for DNS, Git, TrueNAS, Cantata, Doors, GTR, SBR, SonarQube, etc.
 
 ## 🤝 Contributing
 
@@ -1332,7 +1459,7 @@ except SpecificException as e:
 
 #### Common Issues
 
-**"Import Error: No module named 'langchain'"**
+**"Import Error: No module named 'langgraph' / 'langchain_core'"**
 ```bash
 # Install missing dependencies
 pip install -r requirements_oficial.txt
@@ -1359,18 +1486,24 @@ python -c "from vcenter_agent_system.src.utils.vcenter_tools import get_si; si =
 
 **"Documentation agent returns 'no contiene información'"**
 ```bash
-# This is a known issue (false negatives ~20%)
-# Check RAG_INVESTIGATION_REPORT.md for solutions
-# Quick fix: Increase fragment size in doc_tools.py line 282
+# Rebuild/validate the hybrid retriever inputs
+python tests/validate_hybrid_system.py
 ```
 
-**"Tests failing with 'langchain' import error"**
+**"ML predictions are empty or unavailable"**
+```bash
+# Check ML configuration and cached outputs
+python tests/validate_ml_data_foundation.py
+
+# Confirm ml scheduler is enabled in config/ml_config.json
+# Then restart the app so run.py launches the scheduler
+python run.py
+```
+
+**"Tests failing with LangGraph / ML imports"**
 ```bash
 # Install test dependencies
 pip install -r unitary_test/requirements_test.txt
-
-# Or skip LLM-dependent tests
-pytest -m "not llm" unitary_test/ -v
 ```
 
 #### Debug Mode
@@ -1414,12 +1547,20 @@ When reporting issues, please include:
 - **Logs**: Relevant log excerpts from `logs/`
 - **Test results**: Output of `pytest tests/ -v`
 
+If the issue is specific to reports, also include:
+
+- Whether the failure happened in the **07:00 scheduler** or via **Generate Now**
+- Whether `matplotlib` is installed (historical charts are optional)
+- Whether ML sections were expected (`config/ml_config.json` with predictors enabled)
+- A sample PDF filename from `reports/` if one was produced partially
+
 ## 🔗 Related Projects
 
 ### LLM & AI Frameworks
-- **LangChain**: [https://python.langchain.com/](https://python.langchain.com/)
+- **LangGraph**: [https://www.langchain.com/langgraph](https://www.langchain.com/langgraph)
+- **LangChain Core**: [https://python.langchain.com/](https://python.langchain.com/)
 - **Ollama**: [https://ollama.ai](https://ollama.ai)
-- **Whoosh**: [https://whoosh.readthedocs.io/](https://whoosh.readthedocs.io/)
+- **ChromaDB**: [https://www.trychroma.com/](https://www.trychroma.com/)
 
 ### VMware Integration
 - **pyVmomi**: [https://github.com/vmware/pyvmomi](https://github.com/vmware/pyvmomi)
@@ -1436,7 +1577,7 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 ## 🙏 Acknowledgments
 
 - **Anthropic** for Claude and MCP specification
-- **LangChain** team for the excellent AI framework
+- **LangGraph / LangChain** ecosystem for the graph and message abstractions
 - **Ollama** for local LLM runtime
 - **VMware** for pyVmomi and vSphere SDK
 - **Flask** team for the robust web framework
@@ -1444,7 +1585,7 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 ---
 
 **Project Status**: ✅ Active Development
-**Latest Update**: 2026-02-22
+**Latest Update**: 2026-06-02
 **Version**: 2.1
 **Maintainer**: jmartinb
 
