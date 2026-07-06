@@ -7,7 +7,7 @@
 #   2. Compilación
 #   3. Análisis SonarQube
 #   4. Despliegue en vCenter + VM
-#   5. Generación de checksums (sha256sum + ZIP)
+#   5. Generación de checksums (sha256sum + ZIP) y documentación Doxygen
 #   6. Finalización y notificaciones
 #
 # Uso:
@@ -558,11 +558,89 @@ run_pipeline() {
     log_ok "Despliegue completado"
 
     #---------------------------------------------------------------------------
-    # FASE 5: Generación de checksums
+    # FASE 5: Generación de checksums y documentación Doxygen
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[5/6] GENERACIÓN DE CHECKSUMS"
+    log_info "[5/6] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
     log_info "───────────────────────────────────────────────────────────"
+
+    log_info "Generando documentación Doxygen..."
+
+    (
+        doxygen_dir="$compile_path/Development_TTCF/ttcf/utils/doxygen"
+
+        if [[ ! -d "$doxygen_dir" ]]; then
+            log_warn "Directorio Doxygen no encontrado: $doxygen_dir, omitiendo generación de documentación"
+            exit 0
+        fi
+
+        if ! command -v doxygen >/dev/null 2>&1; then
+            log_warn "Comando 'doxygen' no disponible, omitiendo generación de documentación"
+            exit 0
+        fi
+
+        cd "$doxygen_dir" || {
+            log_warn "No se puede acceder a: $doxygen_dir, omitiendo generación de documentación"
+            exit 0
+        }
+
+        for doxyfile in Doxyfile_C_Figures Doxyfile_C_NoFigures Doxyfile_Java_Figures Doxyfile_Java_NoFigures; do
+            if [[ -f "$doxyfile" ]]; then
+                log_info "Ejecutando: doxygen $doxyfile"
+                if ! doxygen "$doxyfile" 2>&1 | tee -a "$LOG_FILE"; then
+                    log_warn "doxygen falló para $doxyfile, continuando..."
+                fi
+            else
+                log_warn "Doxyfile no encontrado: $doxygen_dir/$doxyfile, omitiendo"
+            fi
+        done
+
+        dirs_to_zip=()
+        for d in C_Figures C_NoFigures Java_Figures Java_NoFigures; do
+            if [[ -d "$d" ]]; then
+                dirs_to_zip+=("$d")
+            fi
+        done
+
+        if [[ ${#dirs_to_zip[@]} -eq 0 ]]; then
+            log_warn "No se generó ninguna carpeta de documentación Doxygen, omitiendo compresión"
+            exit 0
+        fi
+
+        doxygen_zip="doxygen_docs_$(date +%Y%m%d_%H%M%S).zip"
+
+        log_info "Comprimiendo documentación Doxygen en: ${doxygen_zip}"
+
+        if command -v zip >/dev/null 2>&1; then
+            zip -q -r -9 "${doxygen_zip}" "${dirs_to_zip[@]}"
+        else
+            log_warn "Comando 'zip' no disponible; usando python3 para crear el ZIP"
+            python3 - "${doxygen_zip}" "${dirs_to_zip[@]}" <<'PY'
+import os
+import sys
+import zipfile
+
+zip_name = sys.argv[1]
+dirs = sys.argv[2:]
+
+zf = zipfile.ZipFile(zip_name, 'w', compression=zipfile.ZIP_DEFLATED)
+try:
+    for d in dirs:
+        for root, _, files in os.walk(d):
+            for f in files:
+                full_path = os.path.join(root, f)
+                zf.write(full_path, arcname=full_path)
+finally:
+    zf.close()
+
+print('ZIP creado: {0}'.format(zip_name))
+PY
+        fi
+
+        cp "${doxygen_zip}" "$compile_path/${doxygen_zip}" 2>/dev/null || log_warn "No se pudo copiar ${doxygen_zip} a $compile_path"
+
+        log_ok "Documentación Doxygen generada: $compile_path/${doxygen_zip}"
+    ) || log_warn "Fallo generando documentación Doxygen (no crítico), continuando con el pipeline..."
 
     log_info "Generando checksums en: $compile_path"
 
