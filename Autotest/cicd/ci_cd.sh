@@ -7,7 +7,8 @@
 #   2. Compilación
 #   3. Análisis SonarQube
 #   4. Despliegue en vCenter + VM
-#   5. Notificaciones
+#   5. Generación de checksums (sha256sum + ZIP)
+#   6. Finalización y notificaciones
 #
 # Uso:
 #   ./ci_cd.sh daemon           # Modo daemon (polling continuo)
@@ -230,6 +231,7 @@ run_pipeline() {
     
     # Función de cleanup en caso de error
     cleanup_on_error() {
+        trap - ERR  # Desactivar ERR trap para evitar doble notificación
         local error_msg=${1:-"Error desconocido"}
         local phase=${2:-"unknown"}
         
@@ -257,7 +259,7 @@ run_pipeline() {
     # FASE 1: Checkout del tag
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[1/5] CHECKOUT DEL TAG"
+    log_info "[1/6] CHECKOUT DEL TAG"
     log_info "───────────────────────────────────────────────────────────"
     
     db_query "UPDATE deployments SET status='compiling' WHERE id=$deployment_id"
@@ -273,7 +275,7 @@ run_pipeline() {
     # FASE 2: Compilación
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[2/5] COMPILACIÓN"
+    log_info "[2/6] COMPILACIÓN"
     log_info "───────────────────────────────────────────────────────────"
     
     # Notificar inicio de compilación
@@ -290,14 +292,14 @@ run_pipeline() {
     # FASE 3: Análisis SonarQube
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[3/5] ANÁLISIS SONARQUBE"
+    log_info "[3/6] ANÁLISIS SONARQUBE"
     log_info "───────────────────────────────────────────────────────────"
     
     db_query "UPDATE deployments SET status='analyzing' WHERE id=$deployment_id"
     
     # Obtener rutas de configuración
     local compile_path
-    compile_path=$(config_get "git.compile_path" "/home/YOUR_USER/compile")
+    compile_path=$(config_get "git.compile_path" "/home/agent/compile")
     
     # Copiar herramientas al directorio de compilación
     log_info "Preparando herramientas de análisis..."
@@ -570,6 +572,11 @@ run_pipeline() {
             exit 1
         }
 
+        # Nota: truncamos ficheros antes de usar '>>' para evitar duplicados entre ejecuciones
+        : > contents_schemas.txt
+        : > contents_scripts.txt
+        : > contents_scripts2.txt
+
         log_info "Calculando checksums completos (contents_RPM_Completos.txt)..."
         find . -type f -exec sha256sum {} \; > contents_RPM_Completos.txt
         log_ok "contents_RPM_Completos.txt generado"
@@ -585,12 +592,54 @@ run_pipeline() {
         log_info "Calculando checksums de scripts .pl (contents_scripts2.txt)..."
         find . -type f -name "*.pl" -exec sha256sum {} \; >> contents_scripts2.txt
         log_ok "contents_scripts2.txt generado"
+
+        checksum_zip="sha256sum_files_$(date +%Y%m%d_%H%M%S).zip"
+
+        log_info "Comprimiendo ficheros de checksums en: ${checksum_zip}"
+
+        if command -v zip >/dev/null 2>&1; then
+            zip -q -9 "${checksum_zip}" \
+                contents_RPM_Completos.txt \
+                contents_schemas.txt \
+                contents_scripts.txt \
+                contents_scripts2.txt
+        else
+            log_warn "Comando 'zip' no disponible; usando python3 para crear el ZIP"
+            python3 - "${checksum_zip}" <<'PY'
+from __future__ import print_function
+
+import os
+import sys
+import zipfile
+
+zip_name = sys.argv[1]
+files = [
+    'contents_RPM_Completos.txt',
+    'contents_schemas.txt',
+    'contents_scripts.txt',
+    'contents_scripts2.txt',
+]
+
+zf = zipfile.ZipFile(zip_name, 'w', compression=zipfile.ZIP_DEFLATED)
+try:
+    for f in files:
+        # Guardar solo el nombre del fichero (sin rutas)
+        zf.write(f, arcname=os.path.basename(f))
+finally:
+    zf.close()
+
+print('ZIP creado: {0}'.format(zip_name))
+PY
+        fi
+
+        echo "${checksum_zip}" > .last_checksums_zip
+        log_ok "ZIP generado: $compile_path/${checksum_zip}"
     ) || {
-        cleanup_on_error "Error generando checksums en $compile_path" "checksums"
+        cleanup_on_error "Error generando checksums/ZIP en $compile_path" "checksums"
         return 1
     }
 
-    log_ok "Checksums generados correctamente en $compile_path"
+    log_ok "Checksums y ZIP generados correctamente en $compile_path"
 
     #---------------------------------------------------------------------------
     # FASE 6: Finalización y notificaciones
