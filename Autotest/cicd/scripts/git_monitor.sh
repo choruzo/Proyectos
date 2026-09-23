@@ -38,18 +38,26 @@ get_remote_tags() {
     # Esto evita que tags con sufijos (_IntermediateVersion, etc.) ordenen
     # como "más nuevos" por versión cuando en realidad son anteriores.
     if [[ -d "${REPO_LOCAL_PATH:-}/.git" ]]; then
-        log_debug "Repo local disponible, ordenando por fecha de creación..."
-        local local_tags
-        local_tags=$(git -C "$REPO_LOCAL_PATH" for-each-ref \
-            --sort=-creatordate \
-            --format='%(refname:short)' \
-            'refs/tags/' 2>/dev/null | \
-            grep -E "$pattern" || echo "")
-        if [[ -n "$local_tags" ]]; then
-            echo "$local_tags"
-            return 0
+        # Traer los tags del remoto antes de listarlos: sin esto, los tags
+        # creados después del último checkout no se verían nunca.
+        # stdout de git va a stderr: la salida de 'detect' se captura como valor.
+        log_debug "Actualizando tags del repo local (git fetch --tags)..."
+        if GIT_TERMINAL_PROMPT=0 timeout 120 git -C "$REPO_LOCAL_PATH" fetch --tags --force --quiet origin 1>&2; then
+            log_debug "Repo local disponible, ordenando por fecha de creación..."
+            local local_tags
+            local_tags=$(git -C "$REPO_LOCAL_PATH" for-each-ref \
+                --sort=-creatordate \
+                --format='%(refname:short)' \
+                'refs/tags/' 2>/dev/null | \
+                grep -E "$pattern" || echo "")
+            if [[ -n "$local_tags" ]]; then
+                echo "$local_tags"
+                return 0
+            fi
+            log_debug "No se encontraron tags en repo local, consultando remoto..."
+        else
+            log_warn "git fetch de tags falló en $REPO_LOCAL_PATH, usando git ls-remote (orden por versión)"
         fi
-        log_debug "No se encontraron tags en repo local, consultando remoto..."
     fi
     
     # Fallback: obtener tags remotos via git ls-remote
@@ -74,11 +82,6 @@ get_remote_tags() {
         sed 's|refs/tags/||' | \
         grep -E "$pattern" | \
         sort -V -r
-}
-
-# Obtener el último tag procesado con éxito (punto de referencia temporal)
-get_last_success_tag() {
-    db_query "SELECT tag_name FROM deployments WHERE status='success' ORDER BY finished_at DESC LIMIT 1" 2>/dev/null || echo ""
 }
 
 # Obtener tags ya procesados exitosamente desde SQLite
@@ -106,7 +109,9 @@ get_pending_tags() {
 # Devuelve el nombre del tag si hay uno nuevo, vacío si no hay
 detect_new_tag() {
     log_info "Iniciando detección de nuevos tags..."
-    
+
+    db_ensure_schema || log_warn "No se pudo verificar el schema de processed_tags"
+
     # Obtener tags remotos
     local remote_tags
     remote_tags=$(get_remote_tags) || {
@@ -123,47 +128,61 @@ detect_new_tag() {
     local processed_tags
     processed_tags=$(get_processed_tags)
     
-    # Obtener tags pendientes (para no reprocesar)
+    # Obtener tags en proceso (para no lanzarlos dos veces)
     local pending_tags
     pending_tags=$(get_pending_tags)
-    
-    # Obtener el último tag procesado con éxito como punto de corte.
-    # La lista remote_tags está ordenada de más reciente a más antiguo,
-    # por lo que cuando lleguemos a este tag podemos parar: todo lo que
-    # viene después es más antiguo y no debe procesarse.
-    local last_success_tag
-    last_success_tag=$(get_last_success_tag)
-    if [[ -n "$last_success_tag" ]]; then
-        log_debug "Último tag exitoso (referencia): $last_success_tag. Solo se buscan tags más recientes."
-    fi
-    
-    # Buscar primer tag nuevo (el más reciente que no esté procesado ni pendiente)
-    local new_tag=""
+
+    local max_attempts retry_delay
+    max_attempts=$(tag_max_attempts)
+    retry_delay=$(config_get "general.retry_delay_seconds" "1800")
+    [[ "$retry_delay" =~ ^[0-9]+$ ]] || retry_delay=1800
+
+    # La lista remote_tags está ordenada de más reciente a más antiguo:
+    #  - Al llegar al primer tag ya procesado se para: todo lo que sigue es
+    #    más antiguo y nunca debe desplegarse automáticamente.
+    #  - Si el candidato está en curso o esperando reintento, se espera en
+    #    lugar de saltar a un tag más antiguo.
+    #  - Un tag descartado ('skipped', agotó los reintentos) se salta.
+    local new_tag="" tag info status attempts elapsed
     while IFS= read -r tag; do
         if [[ -z "$tag" ]]; then
             continue
         fi
-        
-        # Si llegamos al último tag procesado con éxito, parar la búsqueda.
-        # Todo lo que sigue en la lista es más antiguo.
-        if [[ -n "$last_success_tag" && "$tag" == "$last_success_tag" ]]; then
+
+        if grep -Fxq -- "$tag" <<< "$processed_tags"; then
             log_debug "Alcanzado el último tag procesado ($tag), no hay tags más recientes pendientes"
             break
         fi
-        
-        # Verificar si ya está procesado
-        if echo "$processed_tags" | grep -Fxq "$tag"; then
-            log_debug "Tag ya procesado: $tag"
-            continue
+
+        if grep -Fxq -- "$tag" <<< "$pending_tags"; then
+            log_info "Tag en proceso: $tag, se espera a que termine"
+            break
         fi
-        
-        # Verificar si está pendiente
-        if echo "$pending_tags" | grep -Fxq "$tag"; then
-            log_debug "Tag en proceso: $tag"
-            continue
+
+        # Estado de reintentos del tag (vacío si nunca se ha procesado)
+        info=$(db_query "SELECT status || '|' || attempts || '|' ||
+                                CAST(strftime('%s','now') - strftime('%s', COALESCE(processed_at, first_seen_at)) AS INTEGER)
+                         FROM processed_tags WHERE tag_name='$(sql_escape "$tag")'" 2>/dev/null || echo "")
+        if [[ -n "$info" ]]; then
+            IFS='|' read -r status attempts elapsed <<< "$info"
+            attempts=${attempts:-0}
+            elapsed=${elapsed:-0}
+
+            if [[ "$status" == "skipped" ]]; then
+                log_debug "Tag descartado tras $attempts intento(s): $tag (reprocesar con: ci_cd.sh --tag $tag)"
+                continue
+            fi
+
+            if [[ "$attempts" -gt 0 && "$elapsed" -lt "$retry_delay" ]]; then
+                log_info "Tag $tag falló (intento $attempts/$max_attempts), próximo reintento en $(format_duration $((retry_delay - elapsed)))"
+                break
+            fi
+
+            if [[ "$attempts" -gt 0 ]]; then
+                log_info "Reintentando tag $tag (intento $((attempts + 1))/$max_attempts)"
+            fi
         fi
-        
-        # Encontramos un tag nuevo
+
         new_tag="$tag"
         break
     done <<< "$remote_tags"

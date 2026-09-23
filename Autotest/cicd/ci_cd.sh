@@ -140,6 +140,7 @@ verify_environment() {
         log_warn "Base de datos no existe, inicializando..."
         init_database || ((errors++))
     fi
+    db_ensure_schema || log_warn "No se pudo aplicar la migración del schema de la BD"
     
     # Verificar scripts requeridos
     local scripts=(
@@ -180,17 +181,151 @@ verify_environment() {
 }
 
 #===============================================================================
+# Gestión de fallos del pipeline
+#===============================================================================
+
+# Estado de la ejecución en curso. Cada pipeline corre en su propio subshell
+# (ver run_pipeline_isolated), así que no se arrastra entre ejecuciones.
+PIPELINE_TAG=""
+PIPELINE_DEPLOYMENT_ID=""
+PIPELINE_START_TIME=""
+PIPELINE_FAILURE_HANDLED=0
+PIPELINE_PID=""
+
+# Registrar el fallo del pipeline (BD, processed_tags, notificación).
+# Idempotente: solo actúa la primera vez, para que un fallo explícito seguido
+# del trap ERR no sobrescriba la causa real ni duplique notificaciones.
+# Devuelve 0 para no disparar a su vez el trap ERR.
+cleanup_on_error() {
+    local error_msg=${1:-"Error desconocido"}
+    local phase=${2:-"unknown"}
+    local full_msg="[$phase] $error_msg"
+
+    if [[ "$PIPELINE_FAILURE_HANDLED" == "1" ]]; then
+        log_debug "Fallo ya registrado, se ignora: $full_msg"
+        return 0
+    fi
+    PIPELINE_FAILURE_HANDLED=1
+
+    log_error "════════════════════════════════════════════════════════"
+    log_error "PIPELINE FALLIDO"
+    log_error "════════════════════════════════════════════════════════"
+    log_error "Tag: $PIPELINE_TAG"
+    log_error "Fase: $phase"
+    log_error "Error: $error_msg"
+
+    if [[ -n "$PIPELINE_DEPLOYMENT_ID" ]]; then
+        local duration="NULL"
+        if [[ -n "$PIPELINE_START_TIME" ]]; then
+            duration=$(( $(date +%s) - PIPELINE_START_TIME ))
+        fi
+        db_query "UPDATE deployments SET status='failed', error_message='$(sql_escape "$full_msg")',
+                  completed_at=datetime('now'), duration_seconds=$duration
+                  WHERE id=$PIPELINE_DEPLOYMENT_ID" \
+            || log_warn "No se pudo registrar el fallo en deployments (id=$PIPELINE_DEPLOYMENT_ID)"
+    fi
+
+    if [[ -n "$PIPELINE_TAG" ]]; then
+        db_register_tag_failure "$PIPELINE_TAG" "$full_msg" \
+            || log_warn "No se pudo registrar el intento fallido en processed_tags"
+    fi
+
+    "$SCRIPT_DIR/scripts/notify.sh" both failure "$PIPELINE_TAG" "$full_msg" 2>/dev/null || true
+
+    return 0
+}
+
+# Handler del trap ERR: fallo no controlado dentro del pipeline
+on_pipeline_unexpected_error() {
+    local exit_code=$1
+    local line=$2
+    local cmd=${3:0:200}
+
+    # Con errtrace el trap también salta dentro de $(...) y subshells. Ahí no
+    # se decide el fallo: si es relevante, su código de salida llega al
+    # proceso principal del pipeline y el trap salta allí.
+    if [[ "$BASHPID" != "$PIPELINE_PID" ]]; then
+        log_warn "Comando fallido en subproceso (código $exit_code, línea $line): $cmd"
+        return 0
+    fi
+
+    cleanup_on_error "Error inesperado (código $exit_code) en línea $line: $cmd" "unexpected"
+}
+
+# Ejecutar run_pipeline aislado en un subshell con errexit + errtrace.
+# El resultado se deja en PIPELINE_RESULT y la función devuelve siempre 0.
+# - Hay que llamarla como comando simple (sin if/||/&&): en contexto
+#   condicional bash ignora 'set -e' también dentro del subshell.
+# - Al ser una función, el trap ERR del llamador (daemon) queda desactivado
+#   mientras se ejecuta y se restaura al volver.
+# - El subshell aísla cd, traps y variables: un fallo no deja estado residual.
+PIPELINE_RESULT=0
+run_pipeline_isolated() {
+    local tag=$1
+    local triggered_by=$2
+    local errexit_was_set=0
+    [[ $- == *e* ]] && errexit_was_set=1
+
+    set +e
+    ( set -eE; run_pipeline "$tag" "$triggered_by" )
+    PIPELINE_RESULT=$?
+    if [[ $errexit_was_set -eq 1 ]]; then
+        set -e
+    fi
+
+    return 0
+}
+
+# Recuperar ejecuciones interrumpidas (proceso muerto a mitad de pipeline:
+# reinicio del servicio, kill, reboot...). El daemon ejecuta los pipelines de
+# forma síncrona, así que entre ciclos solo puede haber vivo un pipeline
+# manual (ci_cd.sh --tag); si lo hay, no se toca nada.
+recover_interrupted_runs() {
+    if pgrep -f -- 'ci_cd\.sh (--tag|-t) ' >/dev/null 2>&1; then
+        log_debug "Pipeline manual en curso, se omite la recuperación de ejecuciones interrumpidas"
+        return 0
+    fi
+
+    local stale id tag
+    stale=$(db_query "SELECT id || '|' || tag_name FROM deployments
+                      WHERE status IN ('pending', 'compiling', 'analyzing', 'deploying')") || return 0
+    while IFS='|' read -r id tag; do
+        [[ -z "$id" ]] && continue
+        log_warn "Ejecución interrumpida: $tag (deployment_id=$id), se marca como fallida"
+        db_query "UPDATE deployments SET status='failed', completed_at=datetime('now'),
+                  error_message='[interrupted] Ejecución interrumpida: el proceso terminó sin cerrar el pipeline'
+                  WHERE id=$id" || true
+        db_register_tag_failure "$tag" "[interrupted] Ejecución interrumpida" || true
+    done <<< "$stale"
+
+    # Tags en 'processing' sin ejecución activa
+    local orphans
+    orphans=$(db_query "SELECT tag_name FROM processed_tags WHERE status='processing'") || return 0
+    while IFS= read -r tag; do
+        [[ -z "$tag" ]] && continue
+        log_warn "Tag '$tag' en 'processing' sin ejecución activa, se registra como intento fallido"
+        db_register_tag_failure "$tag" "[interrupted] Estado 'processing' sin ejecución activa" || true
+    done <<< "$orphans"
+}
+
+#===============================================================================
 # Pipeline Principal
 #===============================================================================
 
+# Ejecutar SIEMPRE a través de run_pipeline_isolated
 run_pipeline() {
     local tag=$1
     local triggered_by=${2:-"daemon"}
     local deployment_id=""
-    
+
     local start_time
     start_time=$(date +%s)
-    
+
+    PIPELINE_TAG="$tag"
+    PIPELINE_START_TIME="$start_time"
+    PIPELINE_FAILURE_HANDLED=0
+    PIPELINE_PID="$BASHPID"
+
     log_info "═══════════════════════════════════════════════════════════════════"
     log_info "INICIANDO PIPELINE CI/CD"
     log_info "═══════════════════════════════════════════════════════════════════"
@@ -207,12 +342,13 @@ run_pipeline() {
         log_warn "El tag '$tag' ya fue procesado anteriormente (deployment_id: $existing_deployment)"
         log_warn "Eliminando registro anterior para reprocesar..."
         
-        # Eliminar registros anteriores
+        # Eliminar registros anteriores.
+        # processed_tags NO se borra: conserva el contador de intentos, si no
+        # un tag que falla siempre se reintentaría indefinidamente.
         db_query "DELETE FROM deployments WHERE tag_name='$tag'" 2>/dev/null || true
         db_query "DELETE FROM build_logs WHERE tag='$tag'" 2>/dev/null || true
         db_query "DELETE FROM sonar_results WHERE tag='$tag'" 2>/dev/null || true
-        db_query "DELETE FROM processed_tags WHERE tag_name='$tag'" 2>/dev/null || true
-        
+
         log_ok "Registros anteriores eliminados, continuando con reprocesamiento..."
     fi
     
@@ -228,32 +364,10 @@ run_pipeline() {
     fi
     
     log_debug "Deployment ID: $deployment_id"
-    
-    # Función de cleanup en caso de error
-    cleanup_on_error() {
-        trap - ERR  # Desactivar ERR trap para evitar doble notificación
-        local error_msg=${1:-"Error desconocido"}
-        local phase=${2:-"unknown"}
-        
-        log_error "════════════════════════════════════════════════════════"
-        log_error "PIPELINE FALLIDO"
-        log_error "════════════════════════════════════════════════════════"
-        log_error "Tag: $tag"
-        log_error "Fase: $phase"
-        log_error "Error: $error_msg"
-        
-        # Actualizar BD
-        db_query "UPDATE deployments SET status='failed', error_message='$error_msg', 
-                  completed_at=datetime('now') WHERE id=$deployment_id" 2>/dev/null || true
-        
-        # Notificar
-        "$SCRIPT_DIR/scripts/notify.sh" both failure "$tag" "$error_msg" 2>/dev/null || true
-        
-        return 1
-    }
-    
-    # Trap para errores inesperados
-    trap 'cleanup_on_error "Error inesperado en línea $LINENO" "unknown"' ERR
+    PIPELINE_DEPLOYMENT_ID="$deployment_id"
+
+    # Trap para errores inesperados (con errtrace también cubre funciones anidadas)
+    trap 'on_pipeline_unexpected_error $? $LINENO "$BASH_COMMAND"' ERR
     
     #---------------------------------------------------------------------------
     # FASE 1: Checkout del tag
@@ -324,7 +438,7 @@ run_pipeline() {
     chmod +x "$compile_path/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64" 2>/dev/null || true
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner" 2>/dev/null || true
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/jre/bin/java" 2>/dev/null || true
-    export JAVA_HOME=/usr/lib64/jvm/java-21-openjdk-21
+    export JAVA_HOME=/usr/lib64/jvm/java-25-openjdk-25
     log_ok "Permisos configurados"
     
     # Rutas locales en el directorio de compilación
@@ -422,7 +536,7 @@ run_pipeline() {
     log_info "Directorio de trabajo: $compile_path"
     log_info "Configuración: sonar-project.properties"
     
-    if ! $JAVA_HOME/bin/java -jar /home/YOUR_USER/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name=V08_00_00_00 -Dsonar.projectVersion=V08_00_00_00 \
+    if ! $JAVA_HOME/bin/java -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name=V08_00_00_00 -Dsonar.projectVersion=V08_00_00_00 \
         2>&1 | tee -a "$LOG_FILE"; then
         log_error "sonar-scanner falló"
         cleanup_on_error "Error en análisis SonarQube" "sonarqube"
@@ -486,8 +600,8 @@ run_pipeline() {
     # 4.1 Subir ISO al datastore
     log_info "Subiendo ISO al datastore..."
     local upload_output
-    upload_output=$(python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" upload_iso "$iso_path" 2>&1)
-    local upload_status=$?
+    local upload_status=0
+    upload_output=$(python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" upload_iso "$iso_path" 2>&1) || upload_status=$?
     echo "$upload_output" | tee -a "$LOG_FILE"
     
     if [[ $upload_status -ne 0 ]]; then
@@ -502,7 +616,7 @@ run_pipeline() {
     if [[ -z "$remote_iso_path" ]]; then
         # Fallback: construir path manualmente si no se pudo extraer
         local datastore iso_folder iso_filename
-        datastore=$(config_get "vcenter.datastore" "YOUR_DATASTORE")
+        datastore=$(config_get "vcenter.datastore" "NAS_LIBRERIA")
         iso_folder=$(config_get "vcenter.iso_path" "/ISO")
         # Eliminar barra inicial del iso_folder para coincidir con Python
         iso_folder="${iso_folder#/}"
@@ -595,12 +709,29 @@ run_pipeline() {
             fi
         done
 
+        doxygen_out_dir="$doxygen_dir"
         dirs_to_zip=()
         for d in C_Figures C_NoFigures Java_Figures Java_NoFigures; do
             if [[ -d "$d" ]]; then
                 dirs_to_zip+=("$d")
             fi
         done
+
+        if [[ ${#dirs_to_zip[@]} -eq 0 ]] && [[ -d "$compile_path" ]]; then
+            for d in C_Figures C_NoFigures Java_Figures Java_NoFigures; do
+                if [[ -d "$compile_path/$d" ]]; then
+                    dirs_to_zip+=("$d")
+                fi
+            done
+            if [[ ${#dirs_to_zip[@]} -gt 0 ]]; then
+                log_info "Carpetas de documentación encontradas en $compile_path (OUTPUT_DIRECTORY del Doxyfile), no en $doxygen_dir"
+                doxygen_out_dir="$compile_path"
+                cd "$doxygen_out_dir" || {
+                    log_warn "No se puede acceder a: $doxygen_out_dir, omitiendo compresión"
+                    exit 0
+                }
+            fi
+        fi
 
         if [[ ${#dirs_to_zip[@]} -eq 0 ]]; then
             log_warn "No se generó ninguna carpeta de documentación Doxygen, omitiendo compresión"
@@ -637,7 +768,9 @@ print('ZIP creado: {0}'.format(zip_name))
 PY
         fi
 
-        cp "${doxygen_zip}" "$compile_path/${doxygen_zip}" 2>/dev/null || log_warn "No se pudo copiar ${doxygen_zip} a $compile_path"
+        if [[ "$doxygen_out_dir" != "$compile_path" ]]; then
+            cp "${doxygen_zip}" "$compile_path/${doxygen_zip}" 2>/dev/null || log_warn "No se pudo copiar ${doxygen_zip} a $compile_path"
+        fi
 
         log_ok "Documentación Doxygen generada: $compile_path/${doxygen_zip}"
     ) || log_warn "Fallo generando documentación Doxygen (no crítico), continuando con el pipeline..."
@@ -742,7 +875,7 @@ PY
     }
     
     # Notificaciones finales
-    "$SCRIPT_DIR/scripts/notify.sh" both success "$tag"
+    "$SCRIPT_DIR/scripts/notify.sh" both success "$tag" || log_warn "No se pudo enviar la notificación de éxito"
     
     # Desactivar trap
     trap - ERR
@@ -795,7 +928,11 @@ run_daemon() {
     while true; do
         log_info "───────────────────────────────────────────────────────────"
         log_info "Verificando nuevos tags... ($(date '+%H:%M:%S'))"
-        
+
+        # Cerrar ejecuciones que quedaron a medias (reinicio, kill...) para que
+        # sus tags entren en la política de reintentos en vez de bloquearse
+        recover_interrupted_runs || log_warn "No se pudieron revisar las ejecuciones interrumpidas"
+
         # Detectar nuevo tag (logs van a stderr, solo el tag a stdout)
         # Capturar también el código de salida para detectar errores
         local new_tag=""
@@ -813,12 +950,10 @@ run_daemon() {
         elif [[ -n "$new_tag" && "$new_tag" =~ ^(MAC_[0-9]+_)?V[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}$ ]]; then
             log_ok "Nuevo tag detectado: $new_tag"
             
-            # Ejecutar pipeline con manejo de errores
-            set +e  # Temporalmente desactivar exit on error
-            run_pipeline "$new_tag" "daemon"
-            local pipeline_result=$?
-            set -e  # Reactivar exit on error
-            
+            # Ejecutar pipeline aislado (resultado en PIPELINE_RESULT)
+            run_pipeline_isolated "$new_tag" "daemon"
+            local pipeline_result=$PIPELINE_RESULT
+
             if [[ $pipeline_result -eq 0 ]]; then
                 log_ok "Pipeline completado para: $new_tag"
             else
@@ -855,8 +990,9 @@ process_manual_tag() {
     # Verificar entorno
     verify_environment || exit 1
     
-    # Ejecutar pipeline
-    if run_pipeline "$tag" "manual"; then
+    # Ejecutar pipeline aislado (resultado en PIPELINE_RESULT)
+    run_pipeline_isolated "$tag" "manual"
+    if [[ $PIPELINE_RESULT -eq 0 ]]; then
         log_ok "Pipeline completado para: $tag"
         return 0
     else

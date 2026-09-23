@@ -1,7 +1,7 @@
 -- =============================================================================
 -- init_db.sql - Esquema de base de datos para auditoría CI/CD
 -- =============================================================================
--- Ejecutar con: sqlite3 /home/YOUR_USER/cicd/db/pipeline.db < init_db.sql
+-- Ejecutar con: sqlite3 /home/agent/cicd/db/pipeline.db < init_db.sql
 
 -- Tabla principal de despliegues
 CREATE TABLE IF NOT EXISTS deployments (
@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS processed_tags (
     tag_name TEXT NOT NULL UNIQUE,
     first_seen_at TEXT DEFAULT (datetime('now')),
     processed_at TEXT,
-    status TEXT CHECK(status IN ('pending', 'processing', 'completed', 'skipped'))
+    status TEXT CHECK(status IN ('pending', 'processing', 'completed', 'skipped')),
+    attempts INTEGER NOT NULL DEFAULT 0,  -- Intentos fallidos (reintentos automáticos hasta general.max_tag_attempts)
+    last_error TEXT                       -- Último error registrado ("[fase] mensaje")
 );
 
 -- =============================================================================

@@ -5,7 +5,7 @@
 # Incluir en otros scripts con: source "$(dirname "$0")/common.sh"
 
 # Directorio base del pipeline
-CICD_HOME="${CICD_HOME:-/home/YOUR_USER/cicd}"
+CICD_HOME="${CICD_HOME:-/home/agent/cicd}"
 CONFIG_FILE="${CONFIG_FILE:-$CICD_HOME/config/ci_cd_config.yaml}"
 DB_PATH="${DB_PATH:-$CICD_HOME/db/pipeline.db}"
 LOG_DIR="${LOG_DIR:-$CICD_HOME/logs}"
@@ -107,9 +107,9 @@ load_config() {
     export GIT_REPO_URL
     GIT_BRANCH=$(config_get "git.branch")
     export GIT_BRANCH
-    REPO_LOCAL_PATH=$(config_get "git.repo_local_path" "/home/YOUR_USER/GALTTCMC")
+    REPO_LOCAL_PATH=$(config_get "git.repo_local_path" "/home/agent/GALTTCMC")
     export REPO_LOCAL_PATH
-    COMPILE_PATH=$(config_get "git.compile_path" "/home/YOUR_USER/compile")
+    COMPILE_PATH=$(config_get "git.compile_path" "/home/agent/compile")
     export COMPILE_PATH
     TAG_PATTERN=$(config_get "git.tag_pattern")
     export TAG_PATTERN
@@ -184,6 +184,70 @@ db_tag_processed() {
     [[ "$count" -gt 0 ]]
 }
 
+# Escapar un valor para usarlo dentro de un literal SQL entre comillas simples
+# Uso: db_query "... WHERE tag_name='$(sql_escape "$tag")'"
+sql_escape() {
+    local value=${1:-}
+    local q="'"
+    printf '%s' "${value//$q/$q$q}"
+}
+
+# Migraciones ligeras del schema (idempotentes)
+# processed_tags.attempts / last_error: control de reintentos de tags fallidos
+db_ensure_schema() {
+    [[ -f "$DB_PATH" ]] || return 0
+
+    local cols
+    cols=$(sqlite3 "$DB_PATH" "PRAGMA table_info(processed_tags);" | cut -d'|' -f2) || return 1
+
+    if ! grep -qx "attempts" <<< "$cols"; then
+        db_query "ALTER TABLE processed_tags ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0" || return 1
+        log_info "Migración BD: añadida columna processed_tags.attempts"
+    fi
+    if ! grep -qx "last_error" <<< "$cols"; then
+        db_query "ALTER TABLE processed_tags ADD COLUMN last_error TEXT" || return 1
+        log_info "Migración BD: añadida columna processed_tags.last_error"
+    fi
+}
+
+# Número máximo de intentos automáticos por tag (general.max_tag_attempts)
+tag_max_attempts() {
+    local max
+    max=$(config_get "general.max_tag_attempts" "3")
+    [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=3
+    echo "$max"
+}
+
+# Registrar un intento fallido de un tag en processed_tags.
+# Deja el tag en 'pending' (el daemon lo reintentará tras general.retry_delay_seconds)
+# o en 'skipped' si ha agotado general.max_tag_attempts.
+# Uso: db_register_tag_failure "V08_00_00_02" "[deploy_ssh] Error en despliegue SSH"
+db_register_tag_failure() {
+    local tag_raw=$1
+    local tag err max
+    tag=$(sql_escape "$tag_raw")
+    err=$(sql_escape "${2:-}")
+    max=$(tag_max_attempts)
+
+    db_ensure_schema || log_warn "No se pudo verificar el schema de processed_tags"
+
+    db_query "INSERT OR IGNORE INTO processed_tags (tag_name, status) VALUES ('$tag', 'pending');
+              UPDATE processed_tags
+                 SET attempts = attempts + 1,
+                     last_error = '$err',
+                     processed_at = datetime('now'),
+                     status = CASE WHEN attempts + 1 >= $max THEN 'skipped' ELSE 'pending' END
+               WHERE tag_name = '$tag';" || return 1
+
+    local state
+    state=$(db_query "SELECT status || '|' || attempts FROM processed_tags WHERE tag_name='$tag'") || return 0
+    if [[ "${state%%|*}" == "skipped" ]]; then
+        log_warn "Tag '$tag_raw' descartado tras ${state##*|} intento(s) fallido(s): no se reintentará automáticamente"
+    else
+        log_info "Tag '$tag_raw': intento ${state##*|}/$max fallido, el daemon lo reintentará más tarde"
+    fi
+}
+
 #===============================================================================
 # Utilidades SSH
 #===============================================================================
@@ -192,7 +256,7 @@ db_tag_processed() {
 # Uso: ssh_exec "whoami"
 ssh_exec() {
     local cmd=$1
-    local ssh_key="${TARGET_VM_KEY:-/home/YOUR_USER/.ssh/id_rsa}"
+    local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
     local ssh_opts="-o StrictHostKeyChecking=no -o BatchMode=yes -i $ssh_key"
     
     ssh $ssh_opts "${TARGET_VM_USER}@${TARGET_VM_IP}" "$cmd"
@@ -203,7 +267,7 @@ ssh_exec() {
 ssh_copy() {
     local local_path=$1
     local remote_path=$2
-    local ssh_key="${TARGET_VM_KEY:-/home/YOUR_USER/.ssh/id_rsa}"
+    local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
     local ssh_opts="-o StrictHostKeyChecking=no -o BatchMode=yes -i $ssh_key"
     
     scp $ssh_opts "$local_path" "${TARGET_VM_USER}@${TARGET_VM_IP}:${remote_path}"
