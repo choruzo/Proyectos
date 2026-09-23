@@ -262,7 +262,7 @@ def _ensure_new_columns(conn):
 def save_to_db(db_path, tag, metrics, passed, quality_gate_status='UNKNOWN'):
     """Guarda resultados en SQLite (overall + new code metrics)"""
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=10)
         cursor = conn.cursor()
 
         # Migración automática si la BD es anterior
@@ -340,8 +340,8 @@ def main():
         print('Uso: sonar_check.py <config_path> <tag> [report_task_file]')
         print('')
         print('Ejemplo:')
-        print('  python3.6 sonar_check.py /home/YOUR_USER/cicd/config/ci_cd_config.yaml V01_02_03_04')
-        print('  python3.6 sonar_check.py /home/YOUR_USER/cicd/config/ci_cd_config.yaml V01_02_03_04 /home/YOUR_USER/compile/.scannerwork/report-task.txt')
+        print('  python3.6 sonar_check.py /home/agent/cicd/config/ci_cd_config.yaml V01_02_03_04')
+        print('  python3.6 sonar_check.py /home/agent/cicd/config/ci_cd_config.yaml V01_02_03_04 /home/agent/compile/.scannerwork/report-task.txt')
         sys.exit(1)
 
     config_path = sys.argv[1]

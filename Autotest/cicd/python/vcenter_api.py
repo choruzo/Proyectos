@@ -33,6 +33,50 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+DEFAULT_REQUEST_TIMEOUT = 60      # segundos por petición REST/SOAP
+DEFAULT_UPLOAD_TIMEOUT = 7200     # segundos sin actividad de red durante la subida del ISO
+
+
+def _positive_int(value, default):
+    """Convertir un valor de configuración a entero positivo, o devolver default"""
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+class _HttpClient(object):
+    """Envoltorio de requests que aplica un timeout por defecto a cada llamada.
+
+    requests no tiene timeout por defecto: sin él, una petición a vCenter que
+    no responde deja el pipeline colgado indefinidamente. Las llamadas que
+    pasan 'timeout' de forma explícita lo conservan.
+    """
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault('timeout', self.timeout)
+        return requests.request(method, url, **kwargs)
+
+    def get(self, url, **kwargs):
+        return self.request('GET', url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self.request('POST', url, **kwargs)
+
+    def put(self, url, **kwargs):
+        return self.request('PUT', url, **kwargs)
+
+    def patch(self, url, **kwargs):
+        return self.request('PATCH', url, **kwargs)
+
+    def delete(self, url, **kwargs):
+        return self.request('DELETE', url, **kwargs)
+
+
 class VCenterRESTClient(object):
     """Cliente para vCenter REST API (compatible con Python 3.6)"""
     
@@ -43,6 +87,11 @@ class VCenterRESTClient(object):
         self.password = os.environ.get('VCENTER_PASSWORD', self.config.get('password', ''))
         self.session_id = None
         self.verify_ssl = False  # Cambiar a True si tienes certificados válidos
+        self.request_timeout = _positive_int(
+            self.config.get('request_timeout_seconds'), DEFAULT_REQUEST_TIMEOUT)
+        self.upload_timeout = _positive_int(
+            self.config.get('upload_timeout_seconds'), DEFAULT_UPLOAD_TIMEOUT)
+        self.http = _HttpClient(self.request_timeout)
         
     def _get_headers(self):
         """Obtener headers para peticiones autenticadas"""
@@ -59,7 +108,7 @@ class VCenterRESTClient(object):
         url = '{}/api/session'.format(self.base_url)
         
         try:
-            response = requests.post(
+            response = self.http.post(
                 url,
                 auth=(self.username, self.password),
                 verify=self.verify_ssl
@@ -80,7 +129,7 @@ class VCenterRESTClient(object):
         url = '{}/rest/com/vmware/cis/session'.format(self.base_url)
         
         try:
-            response = requests.post(
+            response = self.http.post(
                 url,
                 auth=(self.username, self.password),
                 verify=self.verify_ssl
@@ -103,7 +152,7 @@ class VCenterRESTClient(object):
             
         try:
             url = '{}/api/session'.format(self.base_url)
-            requests.delete(url, headers=self._get_headers(), verify=self.verify_ssl)
+            self.http.delete(url, headers=self._get_headers(), verify=self.verify_ssl)
             print('[OK] Sesión cerrada')
         except Exception:
             pass  # Ignorar errores al cerrar
@@ -115,7 +164,7 @@ class VCenterRESTClient(object):
         url = '{}/api/vcenter/vm'.format(self.base_url)
         params = {'names': vm_name}
         
-        response = requests.get(
+        response = self.http.get(
             url,
             headers=self._get_headers(),
             params=params,
@@ -139,7 +188,7 @@ class VCenterRESTClient(object):
         url = '{}/rest/vcenter/vm'.format(self.base_url)
         params = {'filter.names': vm_name}
         
-        response = requests.get(
+        response = self.http.get(
             url,
             headers=self._get_headers(),
             params=params,
@@ -159,7 +208,7 @@ class VCenterRESTClient(object):
         """Obtener estado de power de la VM"""
         url = '{}/api/vcenter/vm/{}/power'.format(self.base_url, vm_id)
         
-        response = requests.get(
+        response = self.http.get(
             url,
             headers=self._get_headers(),
             verify=self.verify_ssl
@@ -186,7 +235,7 @@ class VCenterRESTClient(object):
         url = '{}/api/vcenter/vm/{}/power?action=start'.format(self.base_url, vm_id)
         
         try:
-            response = requests.post(
+            response = self.http.post(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -195,7 +244,7 @@ class VCenterRESTClient(object):
         except Exception:
             # Intentar endpoint legacy
             url = '{}/rest/vcenter/vm/{}/power/start'.format(self.base_url, vm_id)
-            response = requests.post(
+            response = self.http.post(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -214,7 +263,7 @@ class VCenterRESTClient(object):
         url = '{}/api/vcenter/vm/{}/power?action=stop'.format(self.base_url, vm_id)
         
         try:
-            response = requests.post(
+            response = self.http.post(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -223,7 +272,7 @@ class VCenterRESTClient(object):
         except Exception:
             # Intentar endpoint legacy
             url = '{}/rest/vcenter/vm/{}/power/stop'.format(self.base_url, vm_id)
-            response = requests.post(
+            response = self.http.post(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -266,11 +315,14 @@ class VCenterRESTClient(object):
         
         # Subir con streaming para ficheros grandes
         with open(local_iso_path, 'rb') as f:
-            response = requests.put(
+            # (conexión, lectura): la lectura cubre también el tiempo que
+            # vCenter tarda en responder cuando termina de recibir el fichero
+            response = self.http.put(
                 url,
                 data=f,
                 auth=(self.username, self.password),
                 verify=self.verify_ssl,
+                timeout=(self.request_timeout, self.upload_timeout),
                 headers={
                     'Content-Type': 'application/octet-stream',
                     'Content-Length': str(file_size)
@@ -290,7 +342,7 @@ class VCenterRESTClient(object):
         """Obtener configuración de hardware de la VM"""
         url = '{}/api/vcenter/vm/{}/hardware'.format(self.base_url, vm_id)
         
-        response = requests.get(
+        response = self.http.get(
             url,
             headers=self._get_headers(),
             verify=self.verify_ssl
@@ -304,7 +356,7 @@ class VCenterRESTClient(object):
         url = '{}/api/vcenter/vm/{}/hardware/cdrom'.format(self.base_url, vm_id)
         
         try:
-            response = requests.get(
+            response = self.http.get(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -314,7 +366,7 @@ class VCenterRESTClient(object):
         except Exception:
             # Endpoint legacy
             url = '{}/rest/vcenter/vm/{}/hardware/cdrom'.format(self.base_url, vm_id)
-            response = requests.get(
+            response = self.http.get(
                 url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl
@@ -367,7 +419,7 @@ class VCenterRESTClient(object):
             disconnect_url = '{}/rest/vcenter/vm/{}/hardware/cdrom/{}/disconnect'.format(
                 self.base_url, vm_id, cdrom_id
             )
-            disconnect_response = requests.post(
+            disconnect_response = self.http.post(
                 disconnect_url,
                 headers=self._get_headers(),
                 verify=self.verify_ssl,
@@ -405,7 +457,7 @@ class VCenterRESTClient(object):
         }
         
         try:
-            response = requests.patch(
+            response = self.http.patch(
                 url,
                 headers=self._get_headers(),
                 json=payload,
@@ -430,7 +482,7 @@ class VCenterRESTClient(object):
                 'start_connected': True,
                 'allow_guest_control': True
             }
-            response = requests.patch(
+            response = self.http.patch(
                 url,
                 headers=self._get_headers(),
                 json=payload,
@@ -452,7 +504,7 @@ class VCenterRESTClient(object):
                 connect_url = '{}/rest/vcenter/vm/{}/hardware/cdrom/{}/connect'.format(
                     self.base_url, vm_id, cdrom_id
                 )
-                connect_response = requests.post(
+                connect_response = self.http.post(
                     connect_url,
                     headers=self._get_headers(),
                     verify=self.verify_ssl,
@@ -485,15 +537,15 @@ class VCenterRESTClient(object):
         return True
     
     def list_snapshots(self, vm_id):
-        """Obtener lista de snapshots de la VM"""
+        """Obtener lista de snapshots de la VM (REST API, solo vCenter 8.0+)"""
         url = '{}/api/vcenter/vm/{}/snapshot'.format(self.base_url, vm_id)
         try:
-            response = requests.get(url, headers=self._get_headers(), verify=self.verify_ssl)
+            response = self.http.get(url, headers=self._get_headers(), verify=self.verify_ssl)
             response.raise_for_status()
             return response.json()
         except Exception:
             url = '{}/rest/vcenter/vm/{}/snapshot'.format(self.base_url, vm_id)
-            response = requests.get(url, headers=self._get_headers(), verify=self.verify_ssl)
+            response = self.http.get(url, headers=self._get_headers(), verify=self.verify_ssl)
             response.raise_for_status()
             return response.json().get('value', [])
 
@@ -504,7 +556,15 @@ class VCenterRESTClient(object):
         vm = self.get_vm(vm_name)
         vm_id = vm.get('vm', vm.get('value', {}).get('vm'))
 
-        snapshots = self.list_snapshots(vm_id)
+        try:
+            snapshots = self.list_snapshots(vm_id)
+        except Exception:
+            # vCenter 6.x/7.x no tiene REST API para snapshots → usar SOAP
+            print('[*] REST snapshot API no disponible, usando SOAP...')
+            self._revert_snapshot_soap(vm_id, snapshot_name)
+            print('[OK] Snapshot revertido via SOAP: {}'.format(snapshot_name))
+            return True
+
         snapshot_id = None
         for s in snapshots:
             if s.get('name') == snapshot_name:
@@ -517,17 +577,203 @@ class VCenterRESTClient(object):
         url = '{}/api/vcenter/vm/{}/snapshot/{}?action=revert'.format(
             self.base_url, vm_id, snapshot_id)
         try:
-            response = requests.post(url, headers=self._get_headers(), verify=self.verify_ssl)
+            response = self.http.post(url, headers=self._get_headers(), verify=self.verify_ssl)
             if response.status_code not in [200, 204]:
                 raise Exception('Status {}'.format(response.status_code))
         except Exception:
             url = '{}/rest/vcenter/vm/{}/snapshot/{}/revert'.format(
                 self.base_url, vm_id, snapshot_id)
-            response = requests.post(url, headers=self._get_headers(), verify=self.verify_ssl)
+            response = self.http.post(url, headers=self._get_headers(), verify=self.verify_ssl)
             response.raise_for_status()
 
         print('[OK] Snapshot revertido: {}'.format(snapshot_name))
         return True
+
+    def _soap_envelope(self, body_content):
+        """Envolver contenido en un SOAP Envelope con prefijos explícitos vim25/soapenv"""
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<soapenv:Envelope'
+            ' xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:vim25="urn:vim25"'
+            ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            '<soapenv:Body>{body}</soapenv:Body>'
+            '</soapenv:Envelope>'
+        ).format(body=body_content)
+
+    def _parse_soap_fault(self, xml_text):
+        """Extraer mensaje legible de una respuesta SOAP Fault"""
+        import xml.etree.ElementTree as ET
+        try:
+            root = ET.fromstring(xml_text)
+            for elem in root.iter():
+                tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+                if tag == 'faultstring':
+                    return elem.text or 'sin detalle'
+        except Exception:
+            pass
+        return (xml_text[:500] if xml_text else 'respuesta vacía')
+
+    def _revert_snapshot_soap(self, vm_id, snapshot_name):
+        """Revertir snapshot via SOAP API (vCenter sin REST snapshot API)"""
+        import xml.etree.ElementTree as ET
+
+        soap_url = '{}/sdk'.format(self.base_url)
+        soap_headers = {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': ''
+        }
+
+        # 1. Login SOAP con prefijos explícitos
+        login_body = (
+            '<vim25:Login>'
+            '<vim25:_this type="SessionManager">SessionManager</vim25:_this>'
+            '<vim25:userName>{user}</vim25:userName>'
+            '<vim25:password>{password}</vim25:password>'
+            '</vim25:Login>'
+        ).format(user=self.username, password=self.password)
+
+        resp = self.http.post(soap_url, data=self._soap_envelope(login_body),
+                             headers=soap_headers, verify=self.verify_ssl)
+        if not resp.ok:
+            raise Exception('SOAP Login fallido ({}): {}'.format(
+                resp.status_code, self._parse_soap_fault(resp.text)))
+        cookies = resp.cookies
+
+        # 2. Obtener árbol de snapshots via PropertyCollector
+        # Usar RetrieveProperties (no Ex) para compatibilidad con API version <4.0
+        prop_body = (
+            '<vim25:RetrieveProperties>'
+            '<vim25:_this type="PropertyCollector">propertyCollector</vim25:_this>'
+            '<vim25:specSet>'
+            '<vim25:propSet>'
+            '<vim25:type>VirtualMachine</vim25:type>'
+            '<vim25:pathSet>snapshot</vim25:pathSet>'
+            '</vim25:propSet>'
+            '<vim25:objectSet>'
+            '<vim25:obj type="VirtualMachine">{vm_id}</vim25:obj>'
+            '</vim25:objectSet>'
+            '</vim25:specSet>'
+            '</vim25:RetrieveProperties>'
+        ).format(vm_id=vm_id)
+
+        resp = self.http.post(soap_url, data=self._soap_envelope(prop_body),
+                             headers=soap_headers, cookies=cookies, verify=self.verify_ssl)
+        if not resp.ok:
+            raise Exception('SOAP RetrieveProperties fallido ({}): {}'.format(
+                resp.status_code, self._parse_soap_fault(resp.text)))
+
+        root = ET.fromstring(resp.text)
+        snapshot_moref = self._find_snapshot_in_xml(root, snapshot_name)
+
+        if not snapshot_moref:
+            raise Exception('Snapshot no encontrado via SOAP: {}'.format(snapshot_name))
+
+        print('[*] Snapshot encontrado: {} -> {}'.format(snapshot_name, snapshot_moref))
+
+        # 3. Revertir al snapshot
+        revert_body = (
+            '<vim25:RevertToSnapshot_Task>'
+            '<vim25:_this type="VirtualMachineSnapshot">{snap}</vim25:_this>'
+            '</vim25:RevertToSnapshot_Task>'
+        ).format(snap=snapshot_moref)
+
+        resp = self.http.post(soap_url, data=self._soap_envelope(revert_body),
+                             headers=soap_headers, cookies=cookies, verify=self.verify_ssl)
+        if not resp.ok:
+            raise Exception('SOAP RevertToSnapshot fallido ({}): {}'.format(
+                resp.status_code, self._parse_soap_fault(resp.text)))
+
+        # 4. Esperar a que la tarea complete
+        task_root = ET.fromstring(resp.text)
+        task_moref = None
+        for elem in task_root.iter():
+            tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+            if tag == 'returnval':
+                task_moref = elem.text
+                break
+
+        if task_moref:
+            self._wait_for_soap_task(soap_url, soap_headers, cookies, task_moref)
+
+    def _find_snapshot_in_xml(self, root, target_name):
+        """Buscar recursivamente el moref de un snapshot por nombre en respuesta SOAP"""
+        def search_entry(elem):
+            name_text = None
+            snap_moref = None
+            child_lists = []
+            for child in elem:
+                tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+                if tag == 'name':
+                    name_text = child.text
+                elif tag == 'snapshot':
+                    snap_moref = child.text
+                elif tag == 'childSnapshotList':
+                    child_lists.append(child)
+            if name_text == target_name and snap_moref:
+                return snap_moref
+            for cl in child_lists:
+                result = search_entry(cl)
+                if result:
+                    return result
+            return None
+
+        for elem in root.iter():
+            tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+            if tag == 'rootSnapshotList':
+                result = search_entry(elem)
+                if result:
+                    return result
+        return None
+
+    def _wait_for_soap_task(self, soap_url, soap_headers, cookies, task_moref,
+                            max_attempts=60, interval=5):
+        """Esperar a que una tarea SOAP de vCenter complete"""
+        import xml.etree.ElementTree as ET
+
+        query_body = (
+            '<vim25:RetrieveProperties>'
+            '<vim25:_this type="PropertyCollector">propertyCollector</vim25:_this>'
+            '<vim25:specSet>'
+            '<vim25:propSet>'
+            '<vim25:type>Task</vim25:type>'
+            '<vim25:pathSet>info.state</vim25:pathSet>'
+            '<vim25:pathSet>info.error</vim25:pathSet>'
+            '</vim25:propSet>'
+            '<vim25:objectSet>'
+            '<vim25:obj type="Task">{task}</vim25:obj>'
+            '</vim25:objectSet>'
+            '</vim25:specSet>'
+            '</vim25:RetrieveProperties>'
+        ).format(task=task_moref)
+
+        for attempt in range(1, max_attempts + 1):
+            resp = self.http.post(soap_url, data=self._soap_envelope(query_body),
+                                 headers=soap_headers, cookies=cookies, verify=self.verify_ssl)
+            resp.raise_for_status()
+
+            task_root = ET.fromstring(resp.text)
+            state = None
+            error_msg = None
+            for elem in task_root.iter():
+                tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+                if tag == 'val' and elem.text in ('success', 'error', 'running', 'queued'):
+                    state = elem.text
+                elif tag == 'localizedMessage' and error_msg is None:
+                    error_msg = elem.text
+
+            if state == 'success':
+                print('[OK] Tarea de snapshot completada')
+                return
+            elif state == 'error':
+                raise Exception('Error en tarea de revert: {}'.format(
+                    error_msg or 'sin detalle'))
+            else:
+                print('[*] Esperando tarea de revert... estado={} ({}/{})'.format(
+                    state or '?', attempt, max_attempts))
+                time.sleep(interval)
+
+        raise Exception('Timeout esperando tarea de revert: {}'.format(task_moref))
 
     def wait_vm_power_state(self, vm_name=None, target_state='POWERED_OFF',
                             max_attempts=30, interval=10):
@@ -566,7 +812,7 @@ class VCenterRESTClient(object):
         
         payload = {'connected': True}
         
-        response = requests.post(
+        response = self.http.post(
             url + '?action=connect',
             headers=self._get_headers(),
             verify=self.verify_ssl
@@ -576,11 +822,35 @@ class VCenterRESTClient(object):
         return True
 
 
+def load_dotenv(config_path):
+    """Cargar .env si las credenciales de vCenter no están ya en el entorno"""
+    if os.environ.get('VCENTER_USER') and os.environ.get('VCENTER_PASSWORD'):
+        return  # Ya cargadas por systemd u otro medio
+
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    env_path = os.path.join(config_dir, '.env')
+    if not os.path.isfile(env_path):
+        return
+
+    with open(env_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def load_config(config_path):
     """Cargar configuración YAML"""
+    load_dotenv(config_path)
+
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-    
+
     # Expandir variables de entorno
     def expand_env(obj):
         if isinstance(obj, str):

@@ -30,27 +30,53 @@ source "$SCRIPT_DIR/scripts/common.sh"
 # Cargar variables de configuración desde YAML
 load_config
 
-# PID file para evitar múltiples instancias
+# PID file del daemon (informativo, lo usa 'status')
 PID_FILE="$SCRIPT_DIR/.cicd.pid"
 
+# Locks (flock). Se liberan solos al morir el proceso: no hay locks huérfanos.
+#  - DAEMON_LOCK_FILE: una sola instancia del daemon.
+#  - PIPELINE_LOCK_FILE: un solo pipeline a la vez en cualquier modo (daemon,
+#    --tag). Los pipelines comparten compile_path, .last_iso_path, el snapshot
+#    y la VM destino. El descriptor lo heredan los procesos hijos, así que el
+#    lock se mantiene mientras siga vivo cualquier proceso del pipeline.
+DAEMON_LOCK_FILE="$SCRIPT_DIR/.cicd.daemon.lock"
+PIPELINE_LOCK_FILE="$SCRIPT_DIR/.cicd.lock"
+DAEMON_LOCK_FD=""
+PIPELINE_LOCK_FD=""
+
 #===============================================================================
-# Verificación de instancia única
+# Verificación de instancia única y lock del pipeline
 #===============================================================================
 
 check_already_running() {
-    if [[ -f "$PID_FILE" ]]; then
-        local old_pid
-        old_pid=$(cat "$PID_FILE")
-        if kill -0 "$old_pid" 2>/dev/null; then
-            log_error "Ya hay una instancia ejecutándose (PID: $old_pid)"
-            log_error "Si crees que es un error, elimina: $PID_FILE"
-            return 1
-        else
-            # Proceso antiguo ya no existe, limpiar PID file
-            rm -f "$PID_FILE"
-        fi
+    exec {DAEMON_LOCK_FD}>>"$DAEMON_LOCK_FILE"
+    if ! flock -n "$DAEMON_LOCK_FD"; then
+        log_error "Ya hay un daemon ejecutándose (PID: $(cat "$PID_FILE" 2>/dev/null || echo '?'))"
+        return 1
     fi
     return 0
+}
+
+# Tomar el lock del pipeline sin esperar. Devuelve 1 si otro proceso lo tiene.
+acquire_pipeline_lock() {
+    [[ -n "$PIPELINE_LOCK_FD" ]] && return 0
+
+    local fd
+    exec {fd}>>"$PIPELINE_LOCK_FILE"
+    if ! flock -n "$fd"; then
+        exec {fd}>&-
+        return 1
+    fi
+    PIPELINE_LOCK_FD=$fd
+    return 0
+}
+
+# Cerrar el descriptor del lock. No se hace 'flock -u': si quedara vivo algún
+# proceso hijo del pipeline, el lock debe seguir tomado hasta que termine.
+release_pipeline_lock() {
+    [[ -n "$PIPELINE_LOCK_FD" ]] || return 0
+    exec {PIPELINE_LOCK_FD}>&-
+    PIPELINE_LOCK_FD=""
 }
 
 create_pid_file() {
@@ -79,7 +105,7 @@ init_database() {
         return 1
     fi
     
-    if sqlite3 "$DB_PATH" < "$init_sql" 2>&1; then
+    if db_sqlite "$DB_PATH" < "$init_sql" 2>&1 && db_ensure_schema; then
         log_ok "Base de datos inicializada: $DB_PATH"
         return 0
     else
@@ -162,12 +188,13 @@ verify_environment() {
     done
     
     # Verificar comandos requeridos
-    local commands=(git sqlite3 python3)
+    local commands=(git sqlite3 python3 yq flock timeout)
     for cmd in "${commands[@]}"; do
         if command -v "$cmd" &>/dev/null; then
             log_debug "Comando OK: $cmd"
         else
-            log_warn "Comando no encontrado: $cmd"
+            log_error "Comando requerido no encontrado: $cmd"
+            ((errors++))
         fi
     done
     
@@ -252,37 +279,94 @@ on_pipeline_unexpected_error() {
     cleanup_on_error "Error inesperado (código $exit_code) en línea $line: $cmd" "unexpected"
 }
 
-# Ejecutar run_pipeline aislado en un subshell con errexit + errtrace.
-# El resultado se deja en PIPELINE_RESULT y la función devuelve siempre 0.
-# - Hay que llamarla como comando simple (sin if/||/&&): en contexto
-#   condicional bash ignora 'set -e' también dentro del subshell.
-# - Al ser una función, el trap ERR del llamador (daemon) queda desactivado
-#   mientras se ejecuta y se restaura al volver.
-# - El subshell aísla cd, traps y variables: un fallo no deja estado residual.
+# Cerrar la ejecución de un tag que quedó a medias porque el proceso del
+# pipeline murió sin pasar por cleanup_on_error (timeout global, señal, crash).
+# Si el pipeline ya registró su fallo, no hay nada abierto y no hace nada.
+close_unfinished_run() {
+    local tag=$1
+    local phase=$2
+    local msg="[$2] $3"
+    local tag_sql ids id
+    tag_sql=$(sql_escape "$tag")
+
+    ids=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql'
+                    AND status IN ('pending', 'compiling', 'analyzing', 'deploying')") || ids=""
+    [[ -n "$ids" ]] || return 0
+
+    log_error "PIPELINE ABORTADO ($phase) - Tag: $tag - $3"
+    while IFS= read -r id; do
+        [[ -n "$id" ]] || continue
+        db_query "UPDATE deployments SET status='failed', completed_at=datetime('now'),
+                  duration_seconds=CAST(strftime('%s','now') - strftime('%s', started_at) AS INTEGER),
+                  error_message='$(sql_escape "$msg")'
+                  WHERE id=$id" || log_warn "No se pudo registrar el fallo en deployments (id=$id)"
+    done <<< "$ids"
+
+    db_register_tag_failure "$tag" "$msg" || log_warn "No se pudo registrar el intento fallido en processed_tags"
+    "$SCRIPT_DIR/scripts/notify.sh" both failure "$tag" "$msg" 2>/dev/null || true
+}
+
+# Ejecutar run_pipeline en un proceso aparte (ci_cd.sh __run_pipeline) bajo
+# 'timeout' (general.pipeline_timeout_seconds). El resultado se deja en
+# PIPELINE_RESULT y la función devuelve 0; si llega INT/TERM, cierra la
+# ejecución y termina el proceso.
+# - Hay que tener tomado el lock del pipeline (lo hereda el proceso hijo).
+# - 'timeout' crea su propio grupo de procesos y, al vencer, mata al grupo
+#   entero (compilación, ssh, subida del ISO...), no solo al script.
+# - Por eso Ctrl-C no le llega directamente: INT/TERM se reenvían a mano.
+# - El proceso aparte aísla cd, traps y variables entre ejecuciones.
 PIPELINE_RESULT=0
 run_pipeline_isolated() {
     local tag=$1
     local triggered_by=$2
-    local errexit_was_set=0
-    [[ $- == *e* ]] && errexit_was_set=1
 
-    set +e
-    ( set -eE; run_pipeline "$tag" "$triggered_by" )
-    PIPELINE_RESULT=$?
-    if [[ $errexit_was_set -eq 1 ]]; then
-        set -e
+    if [[ -z "$PIPELINE_LOCK_FD" ]]; then
+        log_error "run_pipeline_isolated llamado sin el lock del pipeline"
+        PIPELINE_RESULT=1
+        return 0
+    fi
+
+    local max_seconds
+    max_seconds=$(config_get "general.pipeline_timeout_seconds" "14400")
+    [[ "$max_seconds" =~ ^[1-9][0-9]*$ ]] || max_seconds=14400
+    log_info "Timeout global del pipeline: $(format_duration "$max_seconds")"
+
+    local child rc=0 signal_rc=0
+    CICD_PIPELINE_CHILD=1 timeout --kill-after=120 "$max_seconds" \
+        "$SCRIPT_DIR/ci_cd.sh" __run_pipeline "$tag" "$triggered_by" &
+    child=$!
+
+    trap 'signal_rc=130; kill -TERM "$child" 2>/dev/null || true' INT
+    trap 'signal_rc=143; kill -TERM "$child" 2>/dev/null || true' TERM
+    # 'wait' vuelve antes de tiempo si llega una señal con trap: repetir
+    # hasta que el hijo haya terminado de verdad.
+    while :; do
+        rc=0
+        wait "$child" || rc=$?
+        kill -0 "$child" 2>/dev/null || break
+    done
+    trap - INT TERM
+
+    PIPELINE_RESULT=$rc
+    if [[ $signal_rc -ne 0 ]]; then
+        close_unfinished_run "$tag" "interrupted" "Pipeline interrumpido por señal (código $rc)"
+        release_pipeline_lock
+        exit "$signal_rc"
+    elif [[ $rc -eq 124 || $rc -eq 137 ]]; then
+        close_unfinished_run "$tag" "timeout" "Superado el timeout global del pipeline ($(format_duration "$max_seconds"))"
+    elif [[ $rc -ne 0 ]]; then
+        close_unfinished_run "$tag" "unexpected" "El proceso del pipeline terminó con código $rc sin registrar el fallo"
     fi
 
     return 0
 }
 
 # Recuperar ejecuciones interrumpidas (proceso muerto a mitad de pipeline:
-# reinicio del servicio, kill, reboot...). El daemon ejecuta los pipelines de
-# forma síncrona, así que entre ciclos solo puede haber vivo un pipeline
-# manual (ci_cd.sh --tag); si lo hay, no se toca nada.
+# reinicio del servicio, kill, reboot...). Se llama con el lock del pipeline
+# tomado, así que ninguna de las ejecuciones abiertas puede seguir viva.
 recover_interrupted_runs() {
-    if pgrep -f -- 'ci_cd\.sh (--tag|-t) ' >/dev/null 2>&1; then
-        log_debug "Pipeline manual en curso, se omite la recuperación de ejecuciones interrumpidas"
+    if [[ -z "$PIPELINE_LOCK_FD" ]]; then
+        log_warn "recover_interrupted_runs llamado sin el lock del pipeline, se omite"
         return 0
     fi
 
@@ -318,6 +402,16 @@ run_pipeline() {
     local triggered_by=${2:-"daemon"}
     local deployment_id=""
 
+    if ! tag_is_valid "$tag"; then
+        log_error "Tag no válido según git.tag_pattern ($TAG_PATTERN): $tag"
+        return 1
+    fi
+    [[ "$triggered_by" =~ ^(daemon|manual)$ ]] || triggered_by="manual"
+
+    # Literal SQL del tag (escapado)
+    local tag_sql
+    tag_sql=$(sql_escape "$tag")
+
     local start_time
     start_time=$(date +%s)
 
@@ -336,7 +430,7 @@ run_pipeline() {
     
     # Verificar si el tag ya existe en deployments
     local existing_deployment
-    existing_deployment=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag'" 2>/dev/null | head -n1 || echo "")
+    existing_deployment=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql'" | head -n1 || echo "")
     
     if [[ -n "$existing_deployment" ]]; then
         log_warn "El tag '$tag' ya fue procesado anteriormente (deployment_id: $existing_deployment)"
@@ -345,9 +439,9 @@ run_pipeline() {
         # Eliminar registros anteriores.
         # processed_tags NO se borra: conserva el contador de intentos, si no
         # un tag que falla siempre se reintentaría indefinidamente.
-        db_query "DELETE FROM deployments WHERE tag_name='$tag'" 2>/dev/null || true
-        db_query "DELETE FROM build_logs WHERE tag='$tag'" 2>/dev/null || true
-        db_query "DELETE FROM sonar_results WHERE tag='$tag'" 2>/dev/null || true
+        db_query "DELETE FROM deployments WHERE tag_name='$tag_sql'" || log_warn "No se pudo borrar el deployment anterior"
+        db_query "DELETE FROM build_logs WHERE tag='$tag_sql'" || log_warn "No se pudieron borrar los build_logs anteriores"
+        db_query "DELETE FROM sonar_results WHERE tag='$tag_sql'" || log_warn "No se pudieron borrar los sonar_results anteriores"
 
         log_ok "Registros anteriores eliminados, continuando con reprocesamiento..."
     fi
@@ -355,7 +449,7 @@ run_pipeline() {
     # Registrar inicio en BD
     deployment_id=$(db_query \
         "INSERT INTO deployments (tag_name, status, started_at, triggered_by) 
-         VALUES ('$tag', 'pending', datetime('now'), '$triggered_by');
+         VALUES ('$tag_sql', 'pending', datetime('now'), '$triggered_by');
          SELECT last_insert_rowid();")
     
     if [[ -z "$deployment_id" || "$deployment_id" == "0" ]]; then
@@ -868,9 +962,9 @@ PY
               duration_seconds=$duration WHERE id=$deployment_id"
     
     # Marcar tag como completado en processed_tags (INSERT if not exists, UPDATE if exists)
-    db_query "INSERT OR IGNORE INTO processed_tags (tag_name, status) VALUES ('$tag', 'completed')" 2>/dev/null || true
+    db_query "INSERT OR IGNORE INTO processed_tags (tag_name, status) VALUES ('$tag_sql', 'completed')" || true
     db_query "UPDATE processed_tags SET status='completed', processed_at=datetime('now') 
-              WHERE tag_name='$tag'" 2>/dev/null || {
+              WHERE tag_name='$tag_sql'" || {
         log_warn "No se pudo actualizar processed_tags para $tag"
     }
     
@@ -929,53 +1023,65 @@ run_daemon() {
         log_info "───────────────────────────────────────────────────────────"
         log_info "Verificando nuevos tags... ($(date '+%H:%M:%S'))"
 
-        # Cerrar ejecuciones que quedaron a medias (reinicio, kill...) para que
-        # sus tags entren en la política de reintentos en vez de bloquearse
-        recover_interrupted_runs || log_warn "No se pudieron revisar las ejecuciones interrumpidas"
-
-        # Detectar nuevo tag (logs van a stderr, solo el tag a stdout)
-        # Capturar también el código de salida para detectar errores
-        local new_tag=""
-        local detect_exit_code=0
-        
-        # Redirigir stderr del comando a stderr del script explícitamente
-        # y capturar solo stdout
-        new_tag=$("$SCRIPT_DIR/scripts/git_monitor.sh" detect 2>&2) || detect_exit_code=$?
-        
-        # Limpiar espacios, saltos de línea y caracteres de control
-        new_tag=$(echo "$new_tag" | tr -d '[:space:][:cntrl:]')
-        
-        if [[ $detect_exit_code -ne 0 ]]; then
-            log_warn "git_monitor.sh detect falló con código $detect_exit_code, reintentando en siguiente ciclo..."
-        elif [[ -n "$new_tag" && "$new_tag" =~ ^(MAC_[0-9]+_)?V[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}$ ]]; then
-            log_ok "Nuevo tag detectado: $new_tag"
-            
-            # Ejecutar pipeline aislado (resultado en PIPELINE_RESULT)
-            run_pipeline_isolated "$new_tag" "daemon"
-            local pipeline_result=$PIPELINE_RESULT
-
-            if [[ $pipeline_result -eq 0 ]]; then
-                log_ok "Pipeline completado para: $new_tag"
-            else
-                log_error "Pipeline fallido para: $new_tag (código: $pipeline_result)"
-            fi
-        elif [[ -n "$new_tag" ]]; then
-            # Solo debug si la salida parece tener contenido sospechoso
-            if [[ ${#new_tag} -lt 100 ]]; then
-                log_debug "Salida no es un tag válido: $new_tag"
-            else
-                log_debug "Salida inesperada (${#new_tag} caracteres), posible problema de captura"
-            fi
+        # Todo el ciclo (recuperación, detección y pipeline) va bajo el lock:
+        # si hay un pipeline manual en curso, se espera al siguiente ciclo.
+        if acquire_pipeline_lock; then
+            run_daemon_cycle || log_warn "El ciclo del daemon terminó con errores"
+            release_pipeline_lock
         else
-            log_info "No hay tags nuevos"
+            log_warn "Hay un pipeline en curso (ejecución manual), se omite este ciclo"
         fi
-        
+
         # Forzar flush de buffers antes de dormir
         sync 2>/dev/null || true
-        
+
         log_debug "Próxima verificación en ${polling_interval}s..."
         sleep "$polling_interval"
     done
+}
+
+# Un ciclo del daemon. Se ejecuta con el lock del pipeline tomado.
+run_daemon_cycle() {
+    # Cerrar ejecuciones que quedaron a medias (reinicio, kill...) para que
+    # sus tags entren en la política de reintentos en vez de bloquearse
+    recover_interrupted_runs || log_warn "No se pudieron revisar las ejecuciones interrumpidas"
+
+    # Detectar nuevo tag (logs van a stderr, solo el tag a stdout)
+    local new_tag=""
+    local detect_exit_code=0
+    new_tag=$("$SCRIPT_DIR/scripts/git_monitor.sh" detect 2>&2) || detect_exit_code=$?
+
+    # Limpiar espacios, saltos de línea y caracteres de control
+    new_tag=$(echo "$new_tag" | tr -d '[:space:][:cntrl:]')
+
+    if [[ $detect_exit_code -ne 0 ]]; then
+        log_warn "git_monitor.sh detect falló con código $detect_exit_code, reintentando en siguiente ciclo..."
+    elif [[ -z "$new_tag" ]]; then
+        log_info "No hay tags nuevos"
+    elif tag_is_valid "$new_tag"; then
+        log_ok "Nuevo tag detectado: $new_tag"
+
+        # Ejecutar pipeline aislado (resultado en PIPELINE_RESULT)
+        run_pipeline_isolated "$new_tag" "daemon"
+        local pipeline_result=$PIPELINE_RESULT
+
+        if [[ $pipeline_result -eq 0 ]]; then
+            log_ok "Pipeline completado para: $new_tag"
+        else
+            log_error "Pipeline fallido para: $new_tag (código: $pipeline_result)"
+        fi
+    elif [[ ${#new_tag} -le 200 ]]; then
+        # Se marca como descartado para que no bloquee la detección de los
+        # tags siguientes en cada ciclo.
+        log_warn "git_monitor.sh devolvió un tag que no cumple git.tag_pattern ($TAG_PATTERN): $new_tag"
+        log_warn "Se marca como 'skipped' (reprocesar a mano con: ci_cd.sh --tag <tag>, tras ajustar git.tag_pattern)"
+        db_mark_tag_skipped "$new_tag" "No cumple git.tag_pattern" \
+            || log_warn "No se pudo marcar el tag como 'skipped': $new_tag"
+    else
+        log_warn "Salida inesperada de git_monitor.sh detect (${#new_tag} caracteres), posible problema de captura"
+    fi
+
+    return 0
 }
 
 #===============================================================================
@@ -985,13 +1091,24 @@ run_daemon() {
 process_manual_tag() {
     local tag=$1
     
+    if ! tag_is_valid "$tag"; then
+        log_error "Tag no válido: '$tag' no cumple git.tag_pattern ($TAG_PATTERN)"
+        return 1
+    fi
+
     log_info "Procesando tag manualmente: $tag"
-    
+
     # Verificar entorno
     verify_environment || exit 1
-    
+
+    if ! acquire_pipeline_lock; then
+        log_error "Hay otro pipeline en curso (daemon o manual). Inténtalo cuando termine."
+        return 1
+    fi
+
     # Ejecutar pipeline aislado (resultado en PIPELINE_RESULT)
     run_pipeline_isolated "$tag" "manual"
+    release_pipeline_lock
     if [[ $PIPELINE_RESULT -eq 0 ]]; then
         log_ok "Pipeline completado para: $tag"
         return 0
@@ -1111,6 +1228,15 @@ main() {
                 exit 1
             fi
             process_manual_tag "$2"
+            ;;
+        __run_pipeline)
+            # Uso interno: lo lanza run_pipeline_isolated con el lock tomado
+            if [[ "${CICD_PIPELINE_CHILD:-}" != "1" || -z "${2:-}" ]]; then
+                log_error "__run_pipeline es de uso interno; usa: $0 --tag <TAG>"
+                exit 1
+            fi
+            set -E
+            run_pipeline "$2" "${3:-daemon}"
             ;;
         status)
             show_status

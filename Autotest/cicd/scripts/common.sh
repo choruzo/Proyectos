@@ -79,23 +79,35 @@ log_ok()    { log "OK" "$@"; }
 # Gestión de configuración YAML
 #===============================================================================
 
+# yq es obligatorio: sin él config_get devolvería valores vacíos (con
+# TAG_PATTERN vacío cualquier tag coincide) y el pipeline fallaría en silencio.
+if ! command -v yq &>/dev/null; then
+    log_error "yq no está instalado y es obligatorio para leer $CONFIG_FILE (https://github.com/mikefarah/yq)"
+    exit 1
+fi
+
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    log_error "Archivo de configuración no encontrado o sin permisos de lectura: $CONFIG_FILE"
+    exit 1
+fi
+
 # Obtener valor de configuración YAML
 # Uso: config_get "git.repo_url"
+# Devuelve 1 si yq no puede leer el fichero (YAML mal formado, etc.)
 config_get() {
     local key=$1
     local default=${2:-}
-    
-    if command -v yq &>/dev/null; then
-        local value
-        value=$(yq ".$key" "$CONFIG_FILE" 2>/dev/null)
-        if [[ "$value" != "null" && -n "$value" ]]; then
-            # Expandir variables de entorno en el valor
-            eval "echo \"$value\""
-        else
-            echo "$default"
-        fi
+    local value
+
+    if ! value=$(yq ".$key" "$CONFIG_FILE" 2>&1); then
+        log_error "Error leyendo '$key' de $CONFIG_FILE: $value"
+        return 1
+    fi
+
+    if [[ "$value" != "null" && -n "$value" ]]; then
+        # Expandir variables de entorno en el valor
+        eval "echo \"$value\""
     else
-        log_warn "yq no disponible, usando valor por defecto para $key"
         echo "$default"
     fi
 }
@@ -139,23 +151,67 @@ load_config() {
     # General
     POLLING_INTERVAL=$(config_get "general.polling_interval_seconds" "300")
     export POLLING_INTERVAL
+    DB_BUSY_TIMEOUT_MS=$(config_get "general.db_busy_timeout_ms" "10000")
+    [[ "$DB_BUSY_TIMEOUT_MS" =~ ^[0-9]+$ ]] || DB_BUSY_TIMEOUT_MS=10000
+    export DB_BUSY_TIMEOUT_MS
+
+    # Claves sin las que el pipeline no puede funcionar
+    local var missing=()
+    for var in GIT_REPO_URL TAG_PATTERN REPO_LOCAL_PATH COMPILE_PATH BUILD_SCRIPT TARGET_VM_IP; do
+        [[ -n "${!var:-}" ]] || missing+=("$var")
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        log_error "Configuración incompleta en $CONFIG_FILE, faltan: ${missing[*]}"
+        return 1
+    fi
+
+    # grep devuelve 2 si la regex no es válida
+    local rc=0
+    grep -Eq -- "$TAG_PATTERN" <<< "" || rc=$?
+    if [[ $rc -eq 2 ]]; then
+        log_error "git.tag_pattern no es una regex extendida válida: $TAG_PATTERN"
+        return 1
+    fi
+}
+
+# Comprobar que un nombre de tag cumple git.tag_pattern
+# Uso: if tag_is_valid "$tag"; then ...
+tag_is_valid() {
+    local tag=${1:-}
+    [[ -n "$tag" && -n "${TAG_PATTERN:-}" && "$tag" =~ $TAG_PATTERN ]]
 }
 
 #===============================================================================
 # Base de datos SQLite
 #===============================================================================
 
+# Invocar sqlite3 con busy timeout: la Web y el pipeline acceden a la vez y,
+# sin él, cualquier escritura concurrente falla con "database is locked".
+# Se usa '.timeout' (y no PRAGMA busy_timeout) porque no escribe nada en stdout.
+db_sqlite() {
+    sqlite3 -cmd ".timeout ${DB_BUSY_TIMEOUT_MS:-10000}" "$@"
+}
+
 # Ejecutar query SQL
 # Uso: db_query "SELECT * FROM deployments"
+# Los valores de texto deben ir escapados con sql_escape.
 db_query() {
     local query=$1
-    sqlite3 "$DB_PATH" "$query"
+    db_sqlite "$DB_PATH" "$query"
 }
 
 # Ejecutar query y devolver resultado con headers
 db_query_headers() {
     local query=$1
-    sqlite3 -header -column "$DB_PATH" "$query"
+    db_sqlite -header -column "$DB_PATH" "$query"
+}
+
+# Escapar un valor para usarlo dentro de un literal SQL entre comillas simples
+# Uso: db_query "... WHERE tag_name='$(sql_escape "$tag")'"
+sql_escape() {
+    local value=${1:-}
+    local q="'"
+    printf '%s' "${value//$q/$q$q}"
 }
 
 # Insertar log de ejecución
@@ -165,9 +221,14 @@ db_log_execution() {
     local phase=$2
     local message=$3
     local level=${4:-INFO}
-    
-    db_query "INSERT INTO execution_log (deployment_id, phase, message, level) 
-              VALUES ($deployment_id, '$phase', '$message', '$level')"
+
+    if [[ ! "$deployment_id" =~ ^[0-9]+$ ]]; then
+        log_warn "db_log_execution: deployment_id no válido: '$deployment_id'"
+        return 1
+    fi
+
+    db_query "INSERT INTO execution_log (deployment_id, phase, message, level)
+              VALUES ($deployment_id, '$(sql_escape "$phase")', '$(sql_escape "$message")', '$(sql_escape "$level")')"
 }
 
 # Obtener ID del último deployment
@@ -180,25 +241,26 @@ db_last_deployment_id() {
 db_tag_processed() {
     local tag=$1
     local count
-    count=$(db_query "SELECT COUNT(*) FROM deployments WHERE tag_name='$tag' AND status='success'")
+    count=$(db_query "SELECT COUNT(*) FROM deployments WHERE tag_name='$(sql_escape "$tag")' AND status='success'")
     [[ "$count" -gt 0 ]]
 }
 
-# Escapar un valor para usarlo dentro de un literal SQL entre comillas simples
-# Uso: db_query "... WHERE tag_name='$(sql_escape "$tag")'"
-sql_escape() {
-    local value=${1:-}
-    local q="'"
-    printf '%s' "${value//$q/$q$q}"
-}
-
 # Migraciones ligeras del schema (idempotentes)
-# processed_tags.attempts / last_error: control de reintentos de tags fallidos
+# - journal_mode=WAL: lectores (Web) y escritor (pipeline) no se bloquean entre sí.
+#   Es persistente en el fichero de BD, basta con aplicarlo una vez.
+# - processed_tags.attempts / last_error: control de reintentos de tags fallidos
 db_ensure_schema() {
     [[ -f "$DB_PATH" ]] || return 0
 
+    local mode
+    mode=$(db_query "PRAGMA journal_mode;") || return 1
+    if [[ "$mode" != "wal" ]]; then
+        db_query "PRAGMA journal_mode=WAL;" >/dev/null || return 1
+        log_info "Migración BD: journal_mode cambiado a WAL"
+    fi
+
     local cols
-    cols=$(sqlite3 "$DB_PATH" "PRAGMA table_info(processed_tags);" | cut -d'|' -f2) || return 1
+    cols=$(db_query "PRAGMA table_info(processed_tags);" | cut -d'|' -f2) || return 1
 
     if ! grep -qx "attempts" <<< "$cols"; then
         db_query "ALTER TABLE processed_tags ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0" || return 1
@@ -246,6 +308,20 @@ db_register_tag_failure() {
     else
         log_info "Tag '$tag_raw': intento ${state##*|}/$max fallido, el daemon lo reintentará más tarde"
     fi
+}
+
+# Marcar un tag como descartado ('skipped'): la detección lo salta y no bloquea
+# a los tags siguientes. Se puede reprocesar a mano con: ci_cd.sh --tag <tag>
+# Uso: db_mark_tag_skipped "V08_00_00_00_Foo" "no cumple git.tag_pattern"
+db_mark_tag_skipped() {
+    local tag err
+    tag=$(sql_escape "$1")
+    err=$(sql_escape "${2:-skipped}")
+
+    db_query "INSERT OR IGNORE INTO processed_tags (tag_name, status) VALUES ('$tag', 'skipped');
+              UPDATE processed_tags
+                 SET status = 'skipped', last_error = '$err', processed_at = datetime('now')
+               WHERE tag_name = '$tag';"
 }
 
 #===============================================================================
@@ -329,5 +405,5 @@ init_common() {
     load_config
 }
 
-# Inicializar automáticamente al cargar
-init_common
+# Inicializar automáticamente al cargar (sin configuración válida no se continúa)
+init_common || exit 1

@@ -43,7 +43,7 @@ def load_config():
 
 def get_db_connection():
     """Obtiene conexion a SQLite"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -74,7 +74,7 @@ EOF
 #   Fecha: $(date '+%Y-%m-%d %H:%M:%S')
 #                                                               #
 #   Revisa los logs en:                                         #
-#   /home/YOUR_USER/cicd/logs/                                      #
+#   /home/agent/cicd/logs/                                      #
 #                                                               #
 #################################################################
 
@@ -181,7 +181,7 @@ update_profile_script() {
     
     # Obtener información adicional
     local sonar_url
-    sonar_url=$(config_get "sonarqube.url" "https://YOUR_SONARQUBE_SERVER")
+    sonar_url=$(config_get "sonarqube.url" "https://sonarqube.indra.es")
     local project_key
     project_key=$(config_get "sonarqube.project_key" "GALTTCMC")
     
@@ -248,7 +248,7 @@ echo -e "\${CYAN}|\${NC}  Tag desplegado:  \${GREEN}\${LAST_TAG}\${NC}"
 echo -e "\${CYAN}|\${NC}  Estado:          $status_icon \${LAST_STATUS}"
 echo -e "\${CYAN}|\${NC}  Fecha:           \${LAST_TIMESTAMP}"
 echo -e "\${CYAN}|\${NC}"
-echo -e "\${CYAN}|\${NC}  Logs:      /home/YOUR_USER/cicd/logs/"
+echo -e "\${CYAN}|\${NC}  Logs:      /home/agent/cicd/logs/"
 echo -e "\${CYAN}|\${NC}  SonarQube: \${SONAR_URL}/dashboard?id=\${PROJECT_KEY}"
 echo -e "\${CYAN}+==============================================================+\${NC}"
 echo ""
@@ -333,7 +333,7 @@ log_notification() {
     
     # Obtener deployment_id si existe
     local deployment_id
-    deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag' ORDER BY id DESC LIMIT 1" 2>/dev/null || echo "")
+    deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$(sql_escape "$tag")' ORDER BY id DESC LIMIT 1" 2>/dev/null || echo "")
     
     if [[ -n "$deployment_id" ]]; then
         db_log_execution "$deployment_id" "notify" "Notificación enviada: $message_type" "INFO"

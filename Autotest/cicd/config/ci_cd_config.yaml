@@ -6,6 +6,10 @@
 
 general:
   polling_interval_seconds: 300    # 5 minutos
+  max_tag_attempts: 3              # Intentos automáticos por tag; al agotarlos queda 'skipped'
+  retry_delay_seconds: 1800        # Espera mínima entre reintentos de un tag fallido (30 min)
+  pipeline_timeout_seconds: 14400  # Timeout global de un pipeline completo (4 h); al vencer se mata todo el grupo de procesos
+  db_busy_timeout_ms: 10000
   working_directory: /home/YOUR_USER/cicd
   log_directory: /home/YOUR_USER/cicd/logs
   db_path: /home/YOUR_USER/cicd/db/pipeline.db

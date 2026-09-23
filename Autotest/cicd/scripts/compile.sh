@@ -288,7 +288,14 @@ register_build_phase() {
     
     # Obtener deployment_id si existe
     local deployment_id
-    deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$current_tag' ORDER BY id DESC LIMIT 1" 2>/dev/null || echo "")
+    local tag_sql phase_sql log_sql
+    tag_sql=$(sql_escape "$current_tag")
+    phase_sql=$(sql_escape "$phase")
+    log_sql=$(sql_escape "$COMPILE_LOG_FILE")
+    [[ "$duration" =~ ^[0-9]+$ ]] || duration=0
+    [[ "$exit_code" =~ ^-?[0-9]+$ ]] || exit_code=-1
+
+    deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql' ORDER BY id DESC LIMIT 1" || echo "")
     
     local start_time
     start_time=$(date +%s)
@@ -297,10 +304,10 @@ register_build_phase() {
     # Insertar registro
     if [[ -n "$deployment_id" ]]; then
         db_query "INSERT INTO build_logs (deployment_id, tag, phase, start_time, duration, exit_code, log_file)
-                  VALUES ($deployment_id, '$current_tag', '$phase', $start_time, $duration, $exit_code, '$COMPILE_LOG_FILE')" 2>/dev/null || true
+                  VALUES ($deployment_id, '$tag_sql', '$phase_sql', $start_time, $duration, $exit_code, '$log_sql')"             || log_warn "No se pudo registrar la fase '$phase' en build_logs"
     else
         db_query "INSERT INTO build_logs (tag, phase, start_time, duration, exit_code, log_file)
-                  VALUES ('$current_tag', '$phase', $start_time, $duration, $exit_code, '$COMPILE_LOG_FILE')" 2>/dev/null || true
+                  VALUES ('$tag_sql', '$phase_sql', $start_time, $duration, $exit_code, '$log_sql')"             || log_warn "No se pudo registrar la fase '$phase' en build_logs"
     fi
     
     log_debug "Fase '$phase' registrada en BD (exit_code=$exit_code, duration=${duration}s)"

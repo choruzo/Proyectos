@@ -37,7 +37,7 @@ def get_db():
         print("ERROR: Base de datos no encontrada en {}.".format(DB_PATH), file=sys.stderr)
         print("Ejecuta './ci_cd.sh init' primero para inicializarla.", file=sys.stderr)
         sys.exit(1)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -245,6 +245,11 @@ checkout_tag() {
         return 1
     fi
     
+    if ! tag_is_valid "$tag"; then
+        log_error "Tag no válido según git.tag_pattern ($TAG_PATTERN): $tag"
+        return 1
+    fi
+
     log_info "Iniciando checkout del tag: $tag"
     
     local repo_path="$REPO_LOCAL_PATH"
@@ -337,15 +342,16 @@ clone_repository() {
 
 # Registrar tag como pendiente de procesar
 register_tag_pending() {
-    local tag=$1
+    local tag
+    tag=$(sql_escape "$1")
     
     # Insertar en processed_tags si no existe
     db_query "INSERT OR IGNORE INTO processed_tags (tag_name, status) 
-              VALUES ('$tag', 'processing')" 2>/dev/null || true
+              VALUES ('$tag', 'processing')" || log_warn "No se pudo registrar el tag en processed_tags: $1"
     
     # Actualizar estado si ya existía
     db_query "UPDATE processed_tags SET status='processing', processed_at=datetime('now') 
-              WHERE tag_name='$tag'" 2>/dev/null || true
+              WHERE tag_name='$tag'" || log_warn "No se pudo actualizar processed_tags para: $1"
     
     log_debug "Tag registrado como pendiente: $tag"
 }
@@ -355,7 +361,7 @@ mark_tag_completed() {
     local tag=$1
     
     db_query "UPDATE processed_tags SET status='completed', processed_at=datetime('now') 
-              WHERE tag_name='$tag'" 2>/dev/null || true
+              WHERE tag_name='$(sql_escape "$tag")'" || log_warn "No se pudo marcar como completado: $tag"
     
     log_debug "Tag marcado como completado: $tag"
 }
@@ -365,8 +371,7 @@ mark_tag_skipped() {
     local tag=$1
     local reason=${2:-"skipped"}
     
-    db_query "UPDATE processed_tags SET status='skipped' 
-              WHERE tag_name='$tag'" 2>/dev/null || true
+    db_mark_tag_skipped "$tag" "$reason" || log_warn "No se pudo marcar como saltado: $tag"
     
     log_debug "Tag marcado como saltado: $tag ($reason)"
 }
