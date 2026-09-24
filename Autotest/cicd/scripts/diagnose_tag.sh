@@ -51,9 +51,9 @@ if [[ "$deployment_count" == "0" ]]; then
     echo "   (No se encontraron registros)"
 else
     sqlite3 -line "$DB_PATH" \
-        "SELECT id, tag_name, status, started_at, completed_at, 
+        "SELECT id, attempt, tag_name, status, started_at, completed_at,
                 duration_seconds, triggered_by, error_message
-         FROM deployments WHERE tag_name='$TAG'"
+         FROM deployments WHERE tag_name='$TAG' ORDER BY id"
 fi
 echo ""
 
@@ -117,7 +117,7 @@ echo ""
 # Verificar estado
 in_deployments=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM deployments WHERE tag_name='$TAG'" 2>/dev/null || echo "0")
 in_processed=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM processed_tags WHERE tag_name='$TAG'" 2>/dev/null || echo "0")
-deployment_status=$(sqlite3 "$DB_PATH" "SELECT status FROM deployments WHERE tag_name='$TAG'" 2>/dev/null || echo "")
+deployment_status=$(sqlite3 "$DB_PATH" "SELECT status FROM deployments WHERE tag_name='$TAG' ORDER BY id DESC LIMIT 1" 2>/dev/null || echo "")
 processed_status=$(sqlite3 "$DB_PATH" "SELECT status FROM processed_tags WHERE tag_name='$TAG'" 2>/dev/null || echo "")
 
 echo "✓ En tabla deployments: $in_deployments registro(s) - Estado: ${deployment_status:-N/A}"

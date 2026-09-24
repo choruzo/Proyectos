@@ -10,6 +10,8 @@ general:
   retry_delay_seconds: 1800        # Espera mínima entre reintentos de un tag fallido (30 min)
   pipeline_timeout_seconds: 14400  # Timeout global de un pipeline completo (4 h); al vencer se mata todo el grupo de procesos
   db_busy_timeout_ms: 10000
+  log_level: INFO                  # Nivel mínimo en logs: DEBUG, INFO, WARN, ERROR (CICD_LOG_LEVEL=DEBUG para una ejecución puntual)
+  log_retention_days: 3            # Se borran pipeline_*/compile_*/deploy_*.log sin modificar en más de N días (el resto, logrotate)
   working_directory: /home/YOUR_USER/cicd
   log_directory: /home/YOUR_USER/cicd/logs
   db_path: /home/YOUR_USER/cicd/db/pipeline.db

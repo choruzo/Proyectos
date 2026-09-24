@@ -10,7 +10,7 @@ Uso:
     python3.6 vcenter_api.py <config_path> <action> [args...]
     
 Acciones:
-    upload_iso <local_iso_path>      - Subir ISO al datastore
+    upload_iso <local_iso_path> [remote_name] - Subir ISO al datastore
     configure_cdrom                  - Configurar CD-ROM de la VM con el ISO
     power_on                         - Encender la VM
     power_off                        - Apagar la VM
@@ -28,6 +28,7 @@ import requests
 import json
 import time
 import urllib3
+from urllib.parse import quote
 
 # Desactivar warnings SSL para entornos con certificados auto-firmados
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -69,6 +70,9 @@ class _HttpClient(object):
 
     def put(self, url, **kwargs):
         return self.request('PUT', url, **kwargs)
+
+    def head(self, url, **kwargs):
+        return self.request('HEAD', url, **kwargs)
 
     def patch(self, url, **kwargs):
         return self.request('PATCH', url, **kwargs)
@@ -301,9 +305,9 @@ class VCenterRESTClient(object):
         # URL para upload via HTTPS
         url = '{}/folder/{}?dcPath={}&dsName={}'.format(
             self.base_url,
-            remote_path,
-            datacenter,
-            datastore
+            quote(remote_path),
+            quote(datacenter or '', safe=''),
+            quote(datastore or '', safe='')
         )
         
         file_size = os.path.getsize(local_iso_path)
@@ -330,6 +334,7 @@ class VCenterRESTClient(object):
             )
         
         if response.status_code in [200, 201, 204]:
+            self._verify_uploaded_size(url, file_size)
             print('[OK] ISO subido: [{}] {}'.format(datastore, remote_path))
             return '[{}] {}'.format(datastore, remote_path)
         else:
@@ -338,6 +343,40 @@ class VCenterRESTClient(object):
                 response.text
             ))
     
+    def _remote_file_size(self, url):
+        """Tamaño de un fichero del datastore (Content-Length), o None si no se sabe.
+
+        Primero HEAD; si vCenter no da el tamaño, un GET en streaming del que
+        solo se leen las cabeceras (la conexión se cierra sin descargar nada).
+        """
+        auth = (self.username, self.password)
+        response = self.http.head(url, auth=auth, verify=self.verify_ssl)
+        if response.status_code == 200 and response.headers.get('Content-Length'):
+            return int(response.headers['Content-Length'])
+
+        response = self.http.get(url, auth=auth, verify=self.verify_ssl, stream=True)
+        try:
+            if response.status_code == 200 and response.headers.get('Content-Length'):
+                return int(response.headers['Content-Length'])
+        finally:
+            response.close()
+        return None
+
+    def _verify_uploaded_size(self, url, expected_size):
+        """Comprobar que el ISO del datastore tiene el mismo tamaño que el local"""
+        try:
+            remote_size = self._remote_file_size(url)
+        except (requests.RequestException, ValueError) as e:
+            print('[WARN] No se pudo comprobar el tamaño del ISO subido: {}'.format(e))
+            return
+        if remote_size is None:
+            print('[WARN] vCenter no informa del tamaño del ISO subido, no se puede verificar')
+            return
+        if remote_size != expected_size:
+            raise Exception('El ISO subido está incompleto: {} bytes en el datastore, {} en local'.format(
+                remote_size, expected_size))
+        print('[OK] Tamaño verificado en el datastore: {} bytes'.format(remote_size))
+
     def get_vm_hardware(self, vm_id):
         """Obtener configuración de hardware de la VM"""
         url = '{}/api/vcenter/vm/{}/hardware'.format(self.base_url, vm_id)
@@ -871,7 +910,7 @@ def main():
     if len(sys.argv) < 3:
         print('Uso: vcenter_api.py <config_path> <action> [args...]')
         print('Acciones:')
-        print('  upload_iso <local_iso_path>      - Subir ISO al datastore')
+        print('  upload_iso <local_iso_path> [remote_name] - Subir ISO al datastore')
         print('  configure_cdrom [iso_path]       - Configurar CD-ROM de la VM con ISO')
         print('  power_on                         - Encender la VM')
         print('  power_off                        - Apagar la VM')
@@ -895,7 +934,12 @@ def main():
                 print('Error: Falta ruta del ISO local')
                 sys.exit(1)
             local_path = sys.argv[3]
-            remote_path = client.upload_iso_to_datastore(local_path)
+            # Nombre en el datastore (por defecto, el del fichero local)
+            remote_name = sys.argv[4] if len(sys.argv) > 4 else None
+            if remote_name is not None and ('/' in remote_name or not remote_name.strip()):
+                print('Error: nombre remoto del ISO no válido: {!r}'.format(remote_name))
+                sys.exit(1)
+            remote_path = client.upload_iso_to_datastore(local_path, remote_name)
             # Imprimir el path remoto para que el script padre lo capture
             print('[REMOTE_ISO_PATH] {}'.format(remote_path))
             

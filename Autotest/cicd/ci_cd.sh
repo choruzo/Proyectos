@@ -218,6 +218,23 @@ PIPELINE_DEPLOYMENT_ID=""
 PIPELINE_START_TIME=""
 PIPELINE_FAILURE_HANDLED=0
 PIPELINE_PID=""
+PIPELINE_PHASE=""
+
+# Registrar el inicio de una fase: deployments.current_phase y una entrada en
+# execution_log (la Web saca de ahí el estado y la duración de cada fase).
+# Las claves deben coincidir con PIPELINE_PHASES de web/app.py.
+pipeline_phase() {
+    local key=$1
+    local label=$2
+    PIPELINE_PHASE="$key"
+    [[ -n "$PIPELINE_DEPLOYMENT_ID" ]] || return 0
+
+    db_query "UPDATE deployments SET current_phase='$(sql_escape "$key")' WHERE id=$PIPELINE_DEPLOYMENT_ID" \
+        || log_warn "No se pudo registrar la fase '$key' en deployments"
+    db_log_execution "$PIPELINE_DEPLOYMENT_ID" "$key" "Inicio: $label" "INFO" \
+        || log_warn "No se pudo registrar la fase '$key' en execution_log"
+    return 0
+}
 
 # Registrar el fallo del pipeline (BD, processed_tags, notificación).
 # Idempotente: solo actúa la primera vez, para que un fallo explícito seguido
@@ -246,10 +263,16 @@ cleanup_on_error() {
         if [[ -n "$PIPELINE_START_TIME" ]]; then
             duration=$(( $(date +%s) - PIPELINE_START_TIME ))
         fi
+        # failed_phase es la fase del pipeline (clave de la Web); $phase, más
+        # detallado, queda en error_message.
+        local failed_phase=${PIPELINE_PHASE:-$phase}
         db_query "UPDATE deployments SET status='failed', error_message='$(sql_escape "$full_msg")',
+                  failed_phase='$(sql_escape "$failed_phase")',
                   completed_at=datetime('now'), duration_seconds=$duration
                   WHERE id=$PIPELINE_DEPLOYMENT_ID" \
             || log_warn "No se pudo registrar el fallo en deployments (id=$PIPELINE_DEPLOYMENT_ID)"
+        db_log_execution "$PIPELINE_DEPLOYMENT_ID" "$failed_phase" "$full_msg" "ERROR" \
+            || log_warn "No se pudo registrar el fallo en execution_log"
     fi
 
     if [[ -n "$PIPELINE_TAG" ]]; then
@@ -298,7 +321,7 @@ close_unfinished_run() {
         [[ -n "$id" ]] || continue
         db_query "UPDATE deployments SET status='failed', completed_at=datetime('now'),
                   duration_seconds=CAST(strftime('%s','now') - strftime('%s', started_at) AS INTEGER),
-                  error_message='$(sql_escape "$msg")'
+                  error_message='$(sql_escape "$msg")', failed_phase=COALESCE(failed_phase, current_phase)
                   WHERE id=$id" || log_warn "No se pudo registrar el fallo en deployments (id=$id)"
     done <<< "$ids"
 
@@ -377,7 +400,8 @@ recover_interrupted_runs() {
         [[ -z "$id" ]] && continue
         log_warn "Ejecución interrumpida: $tag (deployment_id=$id), se marca como fallida"
         db_query "UPDATE deployments SET status='failed', completed_at=datetime('now'),
-                  error_message='[interrupted] Ejecución interrumpida: el proceso terminó sin cerrar el pipeline'
+                  error_message='[interrupted] Ejecución interrumpida: el proceso terminó sin cerrar el pipeline',
+                  failed_phase=COALESCE(failed_phase, current_phase)
                   WHERE id=$id" || true
         db_register_tag_failure "$tag" "[interrupted] Ejecución interrumpida" || true
     done <<< "$stale"
@@ -395,6 +419,18 @@ recover_interrupted_runs() {
 #===============================================================================
 # Pipeline Principal
 #===============================================================================
+
+# Nombre del ISO en el datastore: <nombre del disco>_<tag>_cicd.iso
+# Uso: iso_remote_name /home/agent/compile/InstallationDVD.iso V08_00_00_02
+#      -> InstallationDVD_V08_00_00_02_cicd.iso
+# El tag puede llevar un sufijo libre: lo que no sea [A-Za-z0-9._-] pasa a '_'.
+iso_remote_name() {
+    local disk tag
+    disk=$(basename "$1")
+    disk=${disk%.[iI][sS][oO]}
+    tag=${2//[^A-Za-z0-9._-]/_}
+    printf '%s_%s_cicd.iso\n' "$disk" "$tag"
+}
 
 # Ejecutar SIEMPRE a través de run_pipeline_isolated
 run_pipeline() {
@@ -419,6 +455,7 @@ run_pipeline() {
     PIPELINE_START_TIME="$start_time"
     PIPELINE_FAILURE_HANDLED=0
     PIPELINE_PID="$BASHPID"
+    PIPELINE_PHASE=""
 
     log_info "═══════════════════════════════════════════════════════════════════"
     log_info "INICIANDO PIPELINE CI/CD"
@@ -428,35 +465,24 @@ run_pipeline() {
     log_info "Inicio: $(date '+%Y-%m-%d %H:%M:%S')"
     log_info "═══════════════════════════════════════════════════════════════════"
     
-    # Verificar si el tag ya existe en deployments
-    local existing_deployment
-    existing_deployment=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql'" | head -n1 || echo "")
-    
-    if [[ -n "$existing_deployment" ]]; then
-        log_warn "El tag '$tag' ya fue procesado anteriormente (deployment_id: $existing_deployment)"
-        log_warn "Eliminando registro anterior para reprocesar..."
-        
-        # Eliminar registros anteriores.
-        # processed_tags NO se borra: conserva el contador de intentos, si no
-        # un tag que falla siempre se reintentaría indefinidamente.
-        db_query "DELETE FROM deployments WHERE tag_name='$tag_sql'" || log_warn "No se pudo borrar el deployment anterior"
-        db_query "DELETE FROM build_logs WHERE tag='$tag_sql'" || log_warn "No se pudieron borrar los build_logs anteriores"
-        db_query "DELETE FROM sonar_results WHERE tag='$tag_sql'" || log_warn "No se pudieron borrar los sonar_results anteriores"
-
-        log_ok "Registros anteriores eliminados, continuando con reprocesamiento..."
-    fi
-    
-    # Registrar inicio en BD
+    # Registrar inicio en BD. Si el tag ya se procesó, es una ejecución más
+    # (attempt = nº de ejecución del tag) y el historial anterior se conserva.
     deployment_id=$(db_query \
-        "INSERT INTO deployments (tag_name, status, started_at, triggered_by) 
-         VALUES ('$tag_sql', 'pending', datetime('now'), '$triggered_by');
+        "INSERT INTO deployments (tag_name, status, started_at, triggered_by, attempt)
+         VALUES ('$tag_sql', 'pending', datetime('now'), '$triggered_by',
+                 (SELECT COUNT(*) + 1 FROM deployments WHERE tag_name='$tag_sql'));
          SELECT last_insert_rowid();")
-    
+
     if [[ -z "$deployment_id" || "$deployment_id" == "0" ]]; then
         log_error "Error crítico: No se pudo crear registro en deployments"
         return 1
     fi
-    
+
+    local attempt
+    attempt=$(db_query "SELECT attempt FROM deployments WHERE id=$deployment_id") || attempt=""
+    if [[ "$attempt" =~ ^[0-9]+$ && $attempt -gt 1 ]]; then
+        log_info "El tag ya se había procesado: ejecución nº $attempt (se conserva el historial anterior)"
+    fi
     log_debug "Deployment ID: $deployment_id"
     PIPELINE_DEPLOYMENT_ID="$deployment_id"
 
@@ -469,6 +495,7 @@ run_pipeline() {
     log_info ""
     log_info "[1/6] CHECKOUT DEL TAG"
     log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase checkout "Checkout del tag"
     
     db_query "UPDATE deployments SET status='compiling' WHERE id=$deployment_id"
     
@@ -485,11 +512,12 @@ run_pipeline() {
     log_info ""
     log_info "[2/6] COMPILACIÓN"
     log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase compile "Compilación"
     
     # Notificar inicio de compilación
     "$SCRIPT_DIR/scripts/notify.sh" wall compiling "$tag" 2>/dev/null || true
     
-    if ! "$SCRIPT_DIR/scripts/compile.sh"; then
+    if ! DEPLOYMENT_ID="$deployment_id" DEPLOYMENT_TAG="$tag" "$SCRIPT_DIR/scripts/compile.sh"; then
         cleanup_on_error "Fallo en compilación" "compile"
         return 1
     fi
@@ -502,6 +530,7 @@ run_pipeline() {
     log_info ""
     log_info "[3/6] ANÁLISIS SONARQUBE"
     log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase sonarqube "Análisis SonarQube"
     
     db_query "UPDATE deployments SET status='analyzing' WHERE id=$deployment_id"
     
@@ -630,7 +659,7 @@ run_pipeline() {
     local report_task_file="$compile_path/.scannerwork/report-task.txt"
     
     local sonar_result=0
-    python3 "$SCRIPT_DIR/python/sonar_check.py" "$CONFIG_FILE" "$tag" "$report_task_file" || sonar_result=$?
+    DEPLOYMENT_ID="$deployment_id" python3 "$SCRIPT_DIR/python/sonar_check.py" "$CONFIG_FILE" "$tag" "$report_task_file" || sonar_result=$?
     
     if [[ $sonar_result -ne 0 ]]; then
         log_warn "Quality Gate no superado"
@@ -656,6 +685,7 @@ run_pipeline() {
     log_info ""
     log_info "[4/6] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
     log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase checksums "Checksums y documentación"
 
     log_info "Generando documentación Doxygen..."
 
@@ -837,6 +867,7 @@ PY
     log_info ""
     log_info "[5/6] DESPLIEGUE"
     log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase vcenter "Despliegue en vCenter"
     
     db_query "UPDATE deployments SET status='deploying' WHERE id=$deployment_id"
     
@@ -854,11 +885,15 @@ PY
     
     log_info "ISO a desplegar: $iso_path"
     
-    # 4.1 Subir ISO al datastore
-    log_info "Subiendo ISO al datastore..."
+    # 4.1 Subir ISO al datastore con un nombre por versión,
+    # <disco>_<tag>_cicd.iso (p. ej. InstallationDVD_V08_00_00_02_cicd.iso):
+    # no pisa el de otras versiones y permite volver a una anterior.
+    local remote_iso_name
+    remote_iso_name=$(iso_remote_name "$iso_path" "$tag")
+    log_info "Subiendo ISO al datastore como: $remote_iso_name"
     local upload_output
     local upload_status=0
-    upload_output=$(vcenter_call upload_iso "$iso_path" 2>&1) || upload_status=$?
+    upload_output=$(vcenter_call upload_iso "$iso_path" "$remote_iso_name" 2>&1) || upload_status=$?
     echo "$upload_output" | tee -a "$LOG_FILE"
     
     if [[ $upload_status -ne 0 ]]; then
@@ -872,13 +907,12 @@ PY
     
     if [[ -z "$remote_iso_path" ]]; then
         # Fallback: construir path manualmente si no se pudo extraer
-        local datastore iso_folder iso_filename
+        local datastore iso_folder
         datastore=$(config_get "vcenter.datastore" "NAS_LIBRERIA")
         iso_folder=$(config_get "vcenter.iso_path" "/ISO")
         # Eliminar barra inicial del iso_folder para coincidir con Python
         iso_folder="${iso_folder#/}"
-        iso_filename=$(basename "$iso_path")
-        remote_iso_path="[${datastore}] ${iso_folder}/${iso_filename}"
+        remote_iso_path="[${datastore}] ${iso_folder}/${remote_iso_name}"
         log_warn "No se pudo extraer path remoto, usando fallback: $remote_iso_path"
     else
         log_debug "Path remoto del ISO: $remote_iso_path"
@@ -920,6 +954,7 @@ PY
     fi
 
     # 4.7 Despliegue vía SSH
+    pipeline_phase ssh_deploy "Instalación vía SSH"
     log_info "Ejecutando despliegue en VM destino..."
     if ! "$SCRIPT_DIR/scripts/deploy.sh"; then
         cleanup_on_error "Error en despliegue SSH" "deploy_ssh"
@@ -1005,6 +1040,8 @@ run_daemon() {
         log_info "───────────────────────────────────────────────────────────"
         log_info "Verificando nuevos tags... ($(date '+%H:%M:%S'))"
 
+        purge_old_logs
+
         # Todo el ciclo (recuperación, detección y pipeline) va bajo el lock:
         # si hay un pipeline manual en curso, se espera al siguiente ciclo.
         if acquire_pipeline_lock; then
@@ -1082,6 +1119,7 @@ process_manual_tag() {
 
     # Verificar entorno
     verify_environment || exit 1
+    purge_old_logs
 
     if ! acquire_pipeline_lock; then
         log_error "Hay otro pipeline en curso (daemon o manual). Inténtalo cuando termine."

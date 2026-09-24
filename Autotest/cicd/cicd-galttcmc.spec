@@ -107,6 +107,10 @@ install -m 0755 %{_sourcedir}/install_service.sh %{buildroot}%{_app_dir}/
 install -d %{buildroot}%{_unitdir}
 install -m 0644 %{_sourcedir}/cicd.service %{buildroot}%{_unitdir}/cicd.service
 
+# Rotación de logs (service*.log, web_*.log)
+install -d %{buildroot}%{_sysconfdir}/logrotate.d
+install -m 0644 %{_sourcedir}/cicd.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/cicd
+
 # Copiar documentación
 install -d %{buildroot}%{_app_dir}/docs
 install -m 0644 %{_sourcedir}/README.md %{buildroot}%{_app_dir}/docs/
@@ -181,6 +185,7 @@ EOF
 # Systemd service (owned by root)
 %defattr(-,root,root,-)
 %{_unitdir}/cicd.service
+%config(noreplace) %{_sysconfdir}/logrotate.d/cicd
 
 # Utilidades (si existen)
 %defattr(-,%{_app_user},%{_app_group},-)

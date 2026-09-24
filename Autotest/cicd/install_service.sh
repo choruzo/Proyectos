@@ -90,6 +90,14 @@ install_service() {
         log_info "$profile_script preparado (propietario: agent)"
     fi
 
+    # Rotación de los logs de nombre fijo (service*.log, web_*.log), 3 días
+    if [[ -f "$SCRIPT_DIR/cicd.logrotate" ]]; then
+        install -m 0644 "$SCRIPT_DIR/cicd.logrotate" /etc/logrotate.d/cicd
+        log_info "Rotación de logs instalada: /etc/logrotate.d/cicd"
+    else
+        log_warn "No se encuentra $SCRIPT_DIR/cicd.logrotate, no se instala la rotación de logs"
+    fi
+
     # Inicializar base de datos si no existe
     if [[ ! -f "$SCRIPT_DIR/db/pipeline.db" ]]; then
         log_info "Inicializando base de datos..."
@@ -135,6 +143,7 @@ uninstall_service() {
         log_info "Eliminando fichero de servicio..."
         rm -f "$SYSTEMD_DIR/${SERVICE_NAME}.service"
     fi
+    rm -f /etc/logrotate.d/cicd
     
     # Recargar systemd
     systemctl daemon-reload

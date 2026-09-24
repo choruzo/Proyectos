@@ -24,8 +24,29 @@ fi
 # Asegurar que existe el directorio de logs
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 
-# Fichero de log del día
-LOG_FILE="${LOG_FILE:-$LOG_DIR/pipeline_$(date +%Y%m%d).log}"
+# Fichero de log del día. Si no se fija LOG_FILE desde fuera, log() lo
+# recalcula en cada llamada: un proceso que sigue vivo al cambiar de día (el
+# daemon) pasa a escribir en el fichero del día nuevo.
+if [[ -n "${LOG_FILE:-}" ]]; then
+    LOG_FILE_FIXED=1
+else
+    LOG_FILE_FIXED=0
+    printf -v LOG_FILE '%s/pipeline_%(%Y%m%d)T.log' "$LOG_DIR" -1
+fi
+
+# Nivel mínimo de log (general.log_level, se aplica en load_config):
+# DEBUG=0, INFO/OK=1, WARN=2, ERROR=3. Hasta leer la configuración, INFO.
+LOG_LEVEL_NUM=1
+
+# Convertir un nombre de nivel en su número (INFO si no es válido)
+log_level_num() {
+    case ${1^^} in
+        DEBUG) echo 0 ;;
+        WARN|WARNING) echo 2 ;;
+        ERROR) echo 3 ;;
+        *) echo 1 ;;
+    esac
+}
 
 # Colores (solo si stdout es terminal)
 if [[ -t 1 ]]; then
@@ -48,15 +69,27 @@ fi
 log() {
     local level=$1
     shift
+
+    # Filtrar por nivel. ERROR y los niveles desconocidos se escriben siempre.
+    # Siempre devuelve 0: con 'set -e' un log filtrado no puede abortar el script.
+    local num=3
+    case $level in
+        DEBUG) num=0 ;;
+        INFO|OK) num=1 ;;
+        WARN) num=2 ;;
+    esac
+    if [[ $num -lt ${LOG_LEVEL_NUM:-1} ]]; then
+        return 0
+    fi
+
     local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    printf -v timestamp '%(%Y-%m-%d %H:%M:%S)T' -1
     local message="[$timestamp] [$level] $*"
-    
-    # Escribir a fichero con flush inmediato
-    {
-        echo "$message"
-        # Forzar flush del buffer del archivo
-    } >> "$LOG_FILE"
+
+    if [[ "${LOG_FILE_FIXED:-0}" != "1" ]]; then
+        printf -v LOG_FILE '%s/pipeline_%(%Y%m%d)T.log' "$LOG_DIR" -1
+    fi
+    echo "$message" >> "$LOG_FILE"
     
     # Escribir a stderr con colores (NO a stdout para no interferir con captura de valores)
     case $level in
@@ -105,11 +138,25 @@ config_get() {
     fi
 
     if [[ "$value" != "null" && -n "$value" ]]; then
-        # Expandir variables de entorno en el valor
-        eval "echo \"$value\""
+        expand_env_vars "$value"
     else
         echo "$default"
     fi
+}
+
+# Sustituir ${VAR} y $VAR por su valor del entorno (vacío si no existe).
+# No ejecuta nada: $(...), comillas invertidas, comillas y '$' sueltos
+# (p. ej. el '$' final de una regex o una contraseña) se dejan tal cual.
+# Uso: expand_env_vars 'https://${GIT_USER}@host'
+expand_env_vars() {
+    local rest=$1 out="" name
+    local re='\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ $rest =~ $re ]]; do
+        name=${BASH_REMATCH[1]:-${BASH_REMATCH[2]}}
+        out+=${rest%%"${BASH_REMATCH[0]}"*}${!name:-}
+        rest=${rest#*"${BASH_REMATCH[0]}"}
+    done
+    printf '%s\n' "$out$rest"
 }
 
 # Cargar variables de configuración principales
@@ -149,6 +196,11 @@ load_config() {
     export TARGET_VM_KEY
     
     # General
+    # Nivel de log: general.log_level, o CICD_LOG_LEVEL para una ejecución puntual
+    local log_level
+    log_level=$(config_get "general.log_level" "INFO")
+    LOG_LEVEL_NUM=$(log_level_num "${CICD_LOG_LEVEL:-$log_level}")
+
     POLLING_INTERVAL=$(config_get "general.polling_interval_seconds" "300")
     export POLLING_INTERVAL
     DB_BUSY_TIMEOUT_MS=$(config_get "general.db_busy_timeout_ms" "10000")
@@ -249,6 +301,7 @@ db_tag_processed() {
 # - journal_mode=WAL: lectores (Web) y escritor (pipeline) no se bloquean entre sí.
 #   Es persistente en el fichero de BD, basta con aplicarlo una vez.
 # - processed_tags.attempts / last_error: control de reintentos de tags fallidos
+# - deployments.current_phase / failed_phase: seguimiento de fases en la Web
 db_ensure_schema() {
     [[ -f "$DB_PATH" ]] || return 0
 
@@ -270,6 +323,64 @@ db_ensure_schema() {
         db_query "ALTER TABLE processed_tags ADD COLUMN last_error TEXT" || return 1
         log_info "Migración BD: añadida columna processed_tags.last_error"
     fi
+
+    # deployments.current_phase / failed_phase: fase en curso y fase fallida (Web UI)
+    cols=$(db_query "PRAGMA table_info(deployments);" | cut -d'|' -f2) || return 1
+    local col
+    for col in current_phase failed_phase; do
+        if ! grep -qx "$col" <<< "$cols"; then
+            db_query "ALTER TABLE deployments ADD COLUMN $col TEXT" || return 1
+            log_info "Migración BD: añadida columna deployments.$col"
+        fi
+    done
+
+    # deployments.tag_name ya no es UNIQUE: cada reproceso de un tag es una
+    # fila nueva (deployments.attempt) y se conserva el historial.
+    if db_query "PRAGMA index_list(deployments);" | cut -d'|' -f4 | grep -qx "u"; then
+        db_rebuild_deployments || return 1
+        log_info "Migración BD: deployments.tag_name sin UNIQUE y columna deployments.attempt"
+    elif ! grep -qx "attempt" <<< "$cols"; then
+        db_query "ALTER TABLE deployments ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1" || return 1
+        log_info "Migración BD: añadida columna deployments.attempt"
+    fi
+}
+
+# Recrear la tabla deployments sin el UNIQUE de tag_name (SQLite no permite
+# quitarlo con ALTER TABLE). Todo en una transacción: si algo falla, sqlite3
+# termina sin COMMIT y la BD queda como estaba. Las vistas se borran y se
+# vuelven a crear porque el RENAME falla si alguna referencia a la tabla.
+db_rebuild_deployments() {
+    local views indexes drop_views
+    views=$(db_query "SELECT group_concat(sql || ';', char(10)) FROM sqlite_master WHERE type='view'") || return 1
+    drop_views=$(db_query "SELECT group_concat('DROP VIEW IF EXISTS \"' || name || '\";', char(10))
+                           FROM sqlite_master WHERE type='view'") || return 1
+    indexes=$(db_query "SELECT group_concat(sql || ';', char(10)) FROM sqlite_master
+                        WHERE type='index' AND tbl_name='deployments' AND sql IS NOT NULL") || return 1
+
+    local cols="id, tag_name, status, started_at, completed_at, duration_seconds, triggered_by,
+                error_message, current_phase, failed_phase, created_at"
+    db_query "BEGIN IMMEDIATE;
+$drop_views
+CREATE TABLE deployments_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_name TEXT NOT NULL,
+    status TEXT CHECK(status IN ('pending', 'compiling', 'analyzing', 'deploying', 'success', 'failed')),
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    duration_seconds INTEGER,
+    triggered_by TEXT DEFAULT 'daemon',
+    error_message TEXT,
+    current_phase TEXT,
+    failed_phase TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    attempt INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO deployments_new ($cols, attempt) SELECT $cols, 1 FROM deployments;
+DROP TABLE deployments;
+ALTER TABLE deployments_new RENAME TO deployments;
+$indexes
+$views
+COMMIT;"
 }
 
 # Número máximo de intentos automáticos por tag (general.max_tag_attempts)
@@ -426,6 +537,31 @@ vcenter_call() {
         log_error "vcenter_api.py $action superó el tiempo máximo ($(format_duration "$max_seconds"))"
     fi
     return $rc
+}
+
+# Borrar los logs con fecha en el nombre (pipeline_*, compile_*, deploy_*)
+# que no se han modificado en general.log_retention_days días (3 por defecto).
+# Los logs de nombre fijo (service*.log, web_*.log) los rota logrotate
+# (cicd.logrotate): borrarlos aquí dejaría a systemd/gunicorn escribiendo en
+# un fichero ya eliminado.
+purge_old_logs() {
+    local days
+    days=$(config_get "general.log_retention_days" "3")
+    [[ "$days" =~ ^[1-9][0-9]*$ ]] || days=3
+
+    local f count=0
+    while IFS= read -r -d '' f; do
+        if rm -f -- "$f"; then
+            count=$((count + 1))
+        fi
+    done < <(find "$LOG_DIR" -maxdepth 1 -type f \
+                 \( -name 'pipeline_*.log' -o -name 'compile_*.log' -o -name 'deploy_*.log' \) \
+                 -mmin +$((days * 1440)) -print0 2>/dev/null)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Rotación de logs: eliminados $count fichero(s) con más de $days día(s) en $LOG_DIR"
+    fi
+    return 0
 }
 
 # Inicializar (crear directorio de logs si no existe)

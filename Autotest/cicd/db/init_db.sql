@@ -6,14 +6,17 @@
 -- Tabla principal de despliegues
 CREATE TABLE IF NOT EXISTS deployments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tag_name TEXT NOT NULL UNIQUE,
+    tag_name TEXT NOT NULL,              -- Sin UNIQUE: cada reproceso de un tag es una fila nueva
     status TEXT CHECK(status IN ('pending', 'compiling', 'analyzing', 'deploying', 'success', 'failed')),
     started_at TEXT NOT NULL,
     completed_at TEXT,
     duration_seconds INTEGER,
     triggered_by TEXT DEFAULT 'daemon',  -- 'daemon' o 'manual' + usuario
     error_message TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
+    current_phase TEXT,                  -- Fase en curso: checkout, compile, sonarqube, checksums, vcenter, ssh_deploy
+    failed_phase TEXT,                   -- Fase en la que falló (misma clave que current_phase)
+    created_at TEXT DEFAULT (datetime('now')),
+    attempt INTEGER NOT NULL DEFAULT 1   -- Nº de ejecución del tag (1 la primera, 2 al reprocesarlo...)
 );
 
 -- Logs de compilación por fase
@@ -89,9 +92,21 @@ CREATE TABLE IF NOT EXISTS web_users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     is_active INTEGER NOT NULL DEFAULT 1,
+    is_admin INTEGER NOT NULL DEFAULT 0,  -- Solo los administradores gestionan usuarios
     created_at TEXT DEFAULT (datetime('now')),
-    last_login TEXT
+    last_login TEXT,
+    password_changed_at TEXT             -- Cambia con cada contraseña nueva e invalida las sesiones previas
 );
+
+-- Intentos de login fallidos (limitación por usuario e IP)
+CREATE TABLE IF NOT EXISTS web_login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    ip TEXT,
+    attempted_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_login_attempts_time ON web_login_attempts(attempted_at);
 
 CREATE INDEX IF NOT EXISTS idx_web_users_username ON web_users(username);
 CREATE INDEX IF NOT EXISTS idx_build_logs_tag ON build_logs(tag);

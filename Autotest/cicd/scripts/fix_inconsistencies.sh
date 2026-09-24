@@ -33,7 +33,7 @@ echo "📂 Base de datos: $DB_PATH"
 echo ""
 
 #===============================================================================
-# 1. Tags con deployment 'failed' pero processed_tags 'completed'
+# 1. Tags cuya última ejecución es 'failed' pero processed_tags 'completed'
 #===============================================================================
 
 echo "─────────────────────────────────────────────────────────────────"
@@ -45,6 +45,7 @@ inconsistency1=$(sqlite3 "$DB_PATH" "
     FROM deployments d
     INNER JOIN processed_tags p ON d.tag_name = p.tag_name
     WHERE d.status = 'failed' AND p.status = 'completed'
+      AND d.id = (SELECT MAX(d2.id) FROM deployments d2 WHERE d2.tag_name = d.tag_name)
 " 2>/dev/null)
 
 if [[ -z "$inconsistency1" ]]; then
@@ -60,9 +61,7 @@ else
         echo "🔧 Reparando inconsistencias..."
         echo "$inconsistency1" | while read -r tag; do
             echo "   Limpiando registros de: $tag"
-            sqlite3 "$DB_PATH" "DELETE FROM deployments WHERE tag_name='$tag'" 2>/dev/null || true
-            sqlite3 "$DB_PATH" "DELETE FROM build_logs WHERE tag='$tag'" 2>/dev/null || true
-            sqlite3 "$DB_PATH" "DELETE FROM sonar_results WHERE tag='$tag'" 2>/dev/null || true
+            # Solo se corrige processed_tags: el historial de ejecuciones se conserva
             sqlite3 "$DB_PATH" "DELETE FROM processed_tags WHERE tag_name='$tag'" 2>/dev/null || true
             echo "   ✓ $tag limpiado"
         done
@@ -153,11 +152,11 @@ fi
 echo ""
 
 #===============================================================================
-# 4. Deployments duplicados (no deberían existir por UNIQUE constraint)
+# 4. Tags con varias ejecuciones (normal al reprocesar: es el historial)
 #===============================================================================
 
 echo "─────────────────────────────────────────────────────────────────"
-echo "🔍 Buscando: tags duplicados en deployments"
+echo "🔍 Buscando: tags con varias ejecuciones"
 echo "─────────────────────────────────────────────────────────────────"
 
 duplicates=$(sqlite3 "$DB_PATH" "
@@ -168,16 +167,10 @@ duplicates=$(sqlite3 "$DB_PATH" "
 " 2>/dev/null)
 
 if [[ -z "$duplicates" ]]; then
-    echo "✅ No se encontraron duplicados"
+    echo "✅ Ningún tag tiene más de una ejecución"
 else
-    echo "⚠️  Tags duplicados encontrados (no debería ocurrir):"
+    echo "ℹ️  Tags con varias ejecuciones (tag|nº), no requiere acción:"
     echo "$duplicates"
-    
-    if [[ "$FIX_MODE" == "--fix" ]]; then
-        echo ""
-        echo "⚠️  Los duplicados requieren intervención manual."
-        echo "   Revisa los registros con: ./scripts/db_viewer.sh"
-    fi
 fi
 echo ""
 
@@ -200,7 +193,7 @@ if [[ "$FIX_MODE" == "--fix" ]]; then
 else
     echo "ℹ️  Modo de verificación (solo lectura)"
     echo ""
-    if [[ -n "$inconsistency1" || -n "$inconsistency2" || -n "$inconsistency3" || -n "$duplicates" ]]; then
+    if [[ -n "$inconsistency1" || -n "$inconsistency2" || -n "$inconsistency3" ]]; then
         echo "⚠️  Se encontraron inconsistencias."
         echo ""
         echo "Para reparar automáticamente, ejecuta:"

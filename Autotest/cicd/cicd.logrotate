@@ -1,0 +1,23 @@
+# /etc/logrotate.d/cicd - Rotación de los logs de nombre fijo del CI/CD
+#
+# Los abren systemd (service*.log) y gunicorn (web_*.log) en modo append y no
+# se pueden reabrir sin reiniciar: por eso copytruncate. Se guardan 3 días.
+# Los logs con fecha en el nombre (pipeline_*, compile_*, deploy_*) los borra
+# el propio daemon (general.log_retention_days).
+#
+# Lo instala install_service.sh (o el RPM). A mano:
+#   sudo install -m 0644 cicd.logrotate /etc/logrotate.d/cicd
+
+/home/agent/cicd/logs/service.log
+/home/agent/cicd/logs/service_error.log
+/home/agent/cicd/logs/web_access.log
+/home/agent/cicd/logs/web_error.log {
+    daily
+    rotate 3
+    maxage 3
+    missingok
+    notifempty
+    copytruncate
+    compress
+    delaycompress
+}

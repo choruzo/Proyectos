@@ -109,6 +109,7 @@ copy_sources() {
     
     # Copiar unit file de systemd
     cp "$SCRIPT_DIR/cicd.service" "$SOURCES_DIR/"
+    cp "$SCRIPT_DIR/cicd.logrotate" "$SOURCES_DIR/"
     
     # Copiar documentación
     cp "$SCRIPT_DIR/README.md" "$SOURCES_DIR/" 2>/dev/null || true

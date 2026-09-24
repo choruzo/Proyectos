@@ -42,14 +42,15 @@
                     <template x-for="(d, i) in deployments" :key="d.id">
                         <tr :style="'animation-delay:' + (i * 0.025) + 's;cursor:pointer'" @click="viewDetails(d.id)">
                             <td class="id" x-text="'#' + d.id"></td>
-                            <td class="nowrap"><span class="tag" x-text="d.tag"></span></td>
+                            <td class="nowrap"><span class="tag" x-text="d.tag"></span>
+                                <span class="dim mono" x-show="d.attempt > 1" x-text="'· ejecución ' + d.attempt" title="Nº de ejecución de este tag"></span></td>
                             <td>
                                 <span class="badge" :class="statusClass(d.status)">
                                     <span class="spinner" x-show="isRunning(d.status)"></span>
                                     <span x-text="d.status"></span>
                                 </span>
                                 <div class="segs">
-                                    <template x-for="s in phaseSegs(d.status)" :key="s.key"><i :class="s.cls" :title="s.label"></i></template>
+                                    <template x-for="s in phaseSegs(d)" :key="s.key"><i :class="s.cls" :title="s.label"></i></template>
                                 </div>
                             </td>
                             <td class="dim mono nowrap" x-text="d.started_at"></td>
@@ -83,6 +84,7 @@
                 <h3 id="dep-title">
                     <span class="id" x-text="'#' + (selectedDeployment.id || '')"></span>
                     <span class="tag" style="font-size:1rem" x-text="selectedDeployment.tag"></span>
+                    <span class="dim mono" x-show="selectedDeployment.attempt > 1" x-text="'· ejecución ' + selectedDeployment.attempt"></span>
                     <span class="badge" :class="statusClass(selectedDeployment.status)">
                         <span class="spinner" x-show="isRunning(selectedDeployment.status)"></span>
                         <span x-text="selectedDeployment.status"></span>
@@ -128,18 +130,22 @@
 
                     <template x-if="phasesData && phasesData.phases">
                         <div class="stack">
+                            <div class="notice info" x-show="phasesData.note" x-cloak>
+                                <span style="color:var(--azul)">{{ icon('info', 'ico-sm') }}</span><span x-text="phasesData.note"></span>
+                            </div>
                             <div class="pipeline">
                                 <template x-for="(phase, idx) in phasesData.phases" :key="phase.key">
                                     <div class="stage">
                                         <div class="stage-row">
-                                            <div class="link" :class="idx === 0 ? 'hidden' : (phase.status !== 'pending' ? 'done' : '')"></div>
+                                            <div class="link" :class="idx === 0 ? 'hidden' : (['pending', 'unknown'].indexOf(phase.status) === -1 ? 'done' : '')"></div>
                                             <div class="node" :class="phase.status">
                                                 <template x-if="phase.status === 'completed'"><span>{{ icon('check', 'ico-sm') }}</span></template>
                                                 <template x-if="phase.status === 'failed'"><span>{{ icon('x', 'ico-sm') }}</span></template>
                                                 <template x-if="phase.status === 'active'"><span class="spinner"></span></template>
                                                 <template x-if="phase.status === 'pending'"><span x-text="idx + 1"></span></template>
+                                                <template x-if="phase.status === 'unknown'"><span>?</span></template>
                                             </div>
-                                            <div class="link" :class="idx === phasesData.phases.length - 1 ? 'hidden' : (phasesData.phases[idx + 1].status !== 'pending' ? 'done' : '')"></div>
+                                            <div class="link" :class="idx === phasesData.phases.length - 1 ? 'hidden' : (['pending', 'unknown'].indexOf(phasesData.phases[idx + 1].status) === -1 ? 'done' : '')"></div>
                                         </div>
                                         <div class="stage-name" :class="phase.status" x-text="phase.label"></div>
                                         <div class="stage-time" x-text="phase.duration || (phase.status === 'active' ? 'en curso…' : '—')"></div>

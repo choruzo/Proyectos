@@ -293,8 +293,10 @@ register_build_phase() {
     local duration=$3
     
     # Obtener tag actual (si está disponible)
-    local current_tag
-    current_tag=$(get_current_tag)
+    # ci_cd.sh pasa DEPLOYMENT_ID y DEPLOYMENT_TAG: un tag puede tener varias
+    # ejecuciones y el commit varios tags, así que no se deducen del checkout.
+    local current_tag=${DEPLOYMENT_TAG:-}
+    [[ -n "$current_tag" ]] || current_tag=$(get_current_tag)
     
     if [[ -z "$current_tag" ]]; then
         current_tag="unknown"
@@ -309,7 +311,11 @@ register_build_phase() {
     [[ "$duration" =~ ^[0-9]+$ ]] || duration=0
     [[ "$exit_code" =~ ^-?[0-9]+$ ]] || exit_code=-1
 
-    deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql' ORDER BY id DESC LIMIT 1" || echo "")
+    if [[ "${DEPLOYMENT_ID:-}" =~ ^[0-9]+$ ]]; then
+        deployment_id=$DEPLOYMENT_ID
+    else
+        deployment_id=$(db_query "SELECT id FROM deployments WHERE tag_name='$tag_sql' ORDER BY id DESC LIMIT 1" || echo "")
+    fi
     
     local start_time
     start_time=$(date +%s)
