@@ -31,7 +31,7 @@ DEPLOY_LOG_FILE="${LOG_DIR}/deploy_$(date +%Y%m%d_%H%M%S).log"
 
 # Configurar opciones SSH
 get_ssh_opts() {
-    local ssh_key="${TARGET_VM_KEY:-/home/YOUR_USER/.ssh/id_rsa}"
+    local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
     echo "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i $ssh_key"
 }
 
@@ -371,7 +371,7 @@ switch_to_repository_iso() {
     sleep 3
     
     local repository_iso
-    repository_iso=$(config_get "vcenter.repository_iso" "[YOUR_DATASTORE] P27/Repositorio/YOUR_REPO_ISO_NAME.iso")
+    repository_iso=$(config_get "vcenter.repository_iso" "[NAS_LIBRERIA] P27/Repositorio/SLES15SP7V3P27.iso")
     
     log_info "ISO de repositorio: $repository_iso"
     
@@ -385,7 +385,7 @@ switch_to_repository_iso() {
     fi
     
     log_info "Configurando CD-ROM con ISO de repositorio..."
-    if ! python3 "$vcenter_script" "$CONFIG_FILE" configure_cdrom "$repository_iso" 2>&1 | tee -a "$DEPLOY_LOG_FILE"; then
+    if ! vcenter_call configure_cdrom "$repository_iso" 2>&1 | tee -a "$DEPLOY_LOG_FILE"; then
         log_error "Error configurando CD-ROM con repositorio"
         return 1
     fi
@@ -639,7 +639,7 @@ verify_prerequisites() {
         log_ok "TARGET_VM_USER: $TARGET_VM_USER"
     fi
     
-    local ssh_key="${TARGET_VM_KEY:-/home/YOUR_USER/.ssh/id_rsa}"
+    local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
     if [[ -f "$ssh_key" ]]; then
         log_ok "SSH Key: $ssh_key"
     else

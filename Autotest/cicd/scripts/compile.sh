@@ -141,20 +141,34 @@ run_compilation() {
         return 1
     }
     
+    # build-wrapper captura la compilación C/C++ para SonarQube. build_DVDs.sh
+    # ya compila todo (C y Java, incluido mmi.jar), así que la fase Sonar
+    # reutiliza bw-output/ y no vuelve a compilar.
+    local build_wrapper
+    build_wrapper="$(dirname "$SCRIPT_DIR")/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64"
+    local bw_output_dir="$compile_dir/bw-output"
+    if [[ ! -f "$build_wrapper" ]]; then
+        log_error "build-wrapper no encontrado: $build_wrapper"
+        return 1
+    fi
+    chmod +x "$build_wrapper"
+    mkdir -p "$bw_output_dir"
+    log_info "Compilación capturada con build-wrapper (salida: $bw_output_dir)"
+
     log_info "Iniciando compilación..."
     log_info "Log de compilación: $COMPILE_LOG_FILE"
-    
+
     local start_time
     start_time=$(date +%s)
     local exit_code=0
-    
+
     # Ejecutar con timeout y capturar salida
     # Usamos set +e para capturar el código de salida sin que el script falle
     set +e
-    
+
     # Ejecutar el script de build
     # Redirigir stdout y stderr al log, y también mostrar en pantalla
-    timeout "$timeout_secs" bash -c "
+    timeout "$timeout_secs" "$build_wrapper" --out-dir "$bw_output_dir" bash -c "
         cd '$compile_dir'
         './$build_script' 2>&1
     " 2>&1 | tee -a "$COMPILE_LOG_FILE"

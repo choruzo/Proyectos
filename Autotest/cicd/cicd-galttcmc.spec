@@ -1,7 +1,7 @@
 # =============================================================================
 # RPM SPEC File - CI/CD Pipeline GALTTCMC
 # =============================================================================
-# Genera un RPM que instala el pipeline CI/CD en /home/YOUR_USER/cicd
+# Genera un RPM que instala el pipeline CI/CD en /home/agent/cicd
 #
 # Build: rpmbuild -ba cicd-galttcmc.spec
 # Install: sudo rpm -ivh cicd-galttcmc-*.rpm
@@ -10,7 +10,7 @@
 # =============================================================================
 
 %define _app_name cicd
-%define _app_dir /home/YOUR_USER/cicd
+%define _app_dir /home/agent/cicd
 %define _app_user agent
 %define _app_group users
 %define _build_id_links none
@@ -23,9 +23,9 @@ Release:        1%{?dist}
 License:        Proprietary - Indra
 Group:          Development/Tools
 BuildArch:      noarch
-URL:            https://YOUR_GIT_SERVER/YOUR_ORG/YOUR_REPO
+URL:            https://git.indra.es/git/GALTTCMC/GALTTCMC
 Vendor:         Indra Sistemas
-Packager:       GALTTCMC Team <your-team@your-company.com>
+Packager:       GALTTCMC Team <galttcmc@indra.es>
 
 # Dependencias del sistema
 Requires:       bash >= 4.0
@@ -140,9 +140,9 @@ VCENTER_USER=usuario_vcenter
 VCENTER_PASSWORD=password_vcenter
 
 # Target VM SSH key (ruta absoluta)
-TARGET_VM_KEY=/home/YOUR_USER/.ssh/id_rsa
+TARGET_VM_KEY=/home/agent/.ssh/id_rsa
 TARGET_VM_USER=root
-TARGET_VM_HOST=YOUR_TARGET_VM_IP
+TARGET_VM_HOST=172.30.188.147
 EOF
 
 %files
@@ -225,8 +225,13 @@ if [ ! -f /home/%{_app_user}/.ssh/id_rsa ]; then
     echo "Generando claves SSH para usuario %{_app_user}..."
     su - %{_app_user} -c "ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' -C 'cicd-pipeline@%{_app_user}'" 2>/dev/null || true
     echo "Clave pública generada en: /home/%{_app_user}/.ssh/id_rsa.pub"
-    echo "Recuerda copiarla a las VMs objetivo con: ssh-copy-id YOUR_DEPLOY_USER@YOUR_TARGET_VM_IP"
+    echo "Recuerda copiarla a las VMs objetivo con: ssh-copy-id root@172.30.188.147"
 fi
+
+# Fichero de /etc/profile.d que actualiza notify.sh (el servicio no puede usar sudo)
+[ -f /etc/profile.d/informacion.sh ] || : > /etc/profile.d/informacion.sh
+chown %{_app_user}:%{_app_group} /etc/profile.d/informacion.sh
+chmod 0644 /etc/profile.d/informacion.sh
 
 # Reload systemd si el servicio está instalado
 systemctl daemon-reload 2>/dev/null || true
@@ -239,7 +244,7 @@ echo "     $ nano %{_app_dir}/config/.env"
 echo ""
 echo "  2. Copiar clave SSH pública a VM objetivo:"
 echo "     $ cat /home/%{_app_user}/.ssh/id_rsa.pub"
-echo "     $ ssh-copy-id YOUR_DEPLOY_USER@YOUR_TARGET_VM_IP"
+echo "     $ ssh-copy-id root@172.30.188.147"
 echo ""
 echo "  3. Verificar instalación de yq (parser YAML para bash):"
 echo "     $ command -v yq || echo 'Instalar yq manualmente desde https://github.com/mikefarah/yq'"
@@ -278,7 +283,7 @@ fi
 rm -rf %{buildroot}
 
 %changelog
-* Mon Feb 19 2026 GALTTCMC Team <your-team@your-company.com> - 1.0.0-1
+* Mon Feb 19 2026 GALTTCMC Team <galttcmc@indra.es> - 1.0.0-1
 - Versión inicial del RPM
 - Pipeline completo con monitorización Git, compilación, SonarQube y despliegue
 - Incluye dependencias Python offline (wheels)

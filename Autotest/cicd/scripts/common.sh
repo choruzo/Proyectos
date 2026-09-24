@@ -399,6 +399,35 @@ format_duration() {
     fi
 }
 
+# Ejecutar una acción de vcenter_api.py con un tiempo máximo total.
+# Cada petición HTTP ya tiene su propio timeout; este límite cubre la
+# llamada completa (reintentos, esperas de estado, subida lenta del ISO).
+# Uso: vcenter_call <acción> [args...]   (la salida es la de vcenter_api.py)
+# Devuelve el código de vcenter_api.py, o 124/137 si se supera el límite.
+vcenter_call() {
+    local action=$1
+    local key="vcenter.action_timeout_seconds"
+    local default=900
+    if [[ "$action" == "upload_iso" ]]; then
+        key="vcenter.upload_action_timeout_seconds"
+        default=10800
+    fi
+
+    local max_seconds
+    max_seconds=$(config_get "$key" "$default")
+    [[ "$max_seconds" =~ ^[1-9][0-9]*$ ]] || max_seconds=$default
+
+    local vcenter_script
+    vcenter_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/python/vcenter_api.py"
+
+    local rc=0
+    timeout --kill-after=30 "$max_seconds" python3 "$vcenter_script" "$CONFIG_FILE" "$@" || rc=$?
+    if [[ $rc -eq 124 || $rc -eq 137 ]]; then
+        log_error "vcenter_api.py $action superó el tiempo máximo ($(format_duration "$max_seconds"))"
+    fi
+    return $rc
+}
+
 # Inicializar (crear directorio de logs si no existe)
 init_common() {
     mkdir -p "$LOG_DIR"

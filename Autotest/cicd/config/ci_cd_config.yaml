@@ -37,6 +37,7 @@ sonarqube:
   url: https://YOUR_SONARQUBE_SERVER
   project_key: GALTTCMC_interno
   token: "${SONAR_TOKEN}"  # Configurar en .env (usar sonar.login existente)
+  branch: sonar_branch
   # NOTA: Estos umbrales son INFORMATIVOS. La decisión real de pass/fail
   # la toma el Quality Gate de SonarQube (que evalúa solo código nuevo).
   # sonar_check.py usa la API /api/qualitygates/project_status como fuente de verdad.
@@ -58,6 +59,8 @@ vcenter:
   vm_name: "YOUR_CICD_VM"
   snapshot_name: "clean_install"   # Nombre del snapshot al que revertir antes del despliegue
   repository_iso: "[YOUR_DATASTORE] P27/Repositorio/YOUR_REPO_ISO_NAME.iso"  # ISO del repositorio para instalación
+  action_timeout_seconds: 900       # Tiempo máximo de cada llamada completa a vcenter_api.py (revert, esperas, CD-ROM, power on)
+  upload_action_timeout_seconds: 10800  # Tiempo máximo total de la subida del ISO (3 h)
 
 target_vm:
   ip: YOUR_TARGET_VM_IP

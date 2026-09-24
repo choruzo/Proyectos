@@ -19,7 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Configuración de notificaciones
-PROFILE_SCRIPT="${PROFILE_SCRIPT:-/etc/profile.d/informacion.sh}"
+# El servicio corre con NoNewPrivileges=true, así que no se usa sudo: el
+# fichero debe existir y pertenecer a 'agent' (lo crea install_service.sh).
+PROFILE_SCRIPT="${PROFILE_SCRIPT:-$(config_get "notifications.profile_script" "/etc/profile.d/informacion.sh")}"
 
 #===============================================================================
 # Notificación wall (broadcast a usuarios conectados)
@@ -156,7 +158,7 @@ EOF
     
     # Enviar via wall
     if command -v wall &>/dev/null; then
-        echo "$message" | sudo wall 2>/dev/null || echo "$message" | wall 2>/dev/null || {
+        echo "$message" | wall 2>/dev/null || {
             log_warn "No se pudo enviar notificación wall"
             echo "$message"
         }
@@ -255,20 +257,13 @@ echo ""
 EOF
 )
 
-    # Escribir el script
-    if echo "$script_content" | sudo tee "$PROFILE_SCRIPT" > /dev/null 2>&1; then
-        sudo chmod +x "$PROFILE_SCRIPT" 2>/dev/null || true
+    # Escribir el script sobre el fichero existente (sin sudo: 'agent' no
+    # puede crear ficheros en /etc/profile.d, solo reescribir el suyo)
+    if [[ -w "$PROFILE_SCRIPT" ]] && printf '%s\n' "$script_content" > "$PROFILE_SCRIPT" 2>/dev/null; then
         log_ok "Script de información actualizado: $PROFILE_SCRIPT"
     else
-        # Intentar sin sudo
-        if echo "$script_content" > "$PROFILE_SCRIPT" 2>/dev/null; then
-            chmod +x "$PROFILE_SCRIPT" 2>/dev/null || true
-            log_ok "Script de información actualizado: $PROFILE_SCRIPT"
-        else
-            log_warn "No se pudo actualizar $PROFILE_SCRIPT (permisos insuficientes)"
-            log_info "Contenido que se intentó escribir:"
-            echo "$script_content"
-        fi
+        log_warn "No se pudo actualizar $PROFILE_SCRIPT: debe existir y ser escribible por '$(id -un)'"
+        log_warn "Crear con: sudo ./install_service.sh install  (o: sudo install -m 0644 -o agent -g users /dev/null $PROFILE_SCRIPT)"
     fi
 }
 

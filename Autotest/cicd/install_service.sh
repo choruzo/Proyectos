@@ -72,14 +72,24 @@ install_service() {
     mkdir -p "$SCRIPT_DIR/logs"
     mkdir -p "$SCRIPT_DIR/db"
     
-    # Ajustar propietario (asumiendo usuario 'YOUR_USER')
+    # Ajustar propietario (asumiendo usuario 'agent')
     if id "agent" &>/dev/null; then
-        chown -R agent:agent "$SCRIPT_DIR"
-        log_info "Propietario ajustado a usuario 'YOUR_USER'"
+        chown -R "agent:$(id -gn agent)" "$SCRIPT_DIR"
+        log_info "Propietario ajustado a usuario 'agent'"
     else
         log_warn "Usuario 'agent' no existe, ajusta los permisos manualmente"
     fi
-    
+
+    # Fichero de /etc/profile.d que actualiza notify.sh. El servicio corre con
+    # NoNewPrivileges=true (sin sudo), así que tiene que ser de 'agent'.
+    local profile_script="/etc/profile.d/informacion.sh"
+    if id "agent" &>/dev/null; then
+        [[ -f "$profile_script" ]] || : > "$profile_script"
+        chown "agent:$(id -gn agent)" "$profile_script"
+        chmod 0644 "$profile_script"
+        log_info "$profile_script preparado (propietario: agent)"
+    fi
+
     # Inicializar base de datos si no existe
     if [[ ! -f "$SCRIPT_DIR/db/pipeline.db" ]]; then
         log_info "Inicializando base de datos..."

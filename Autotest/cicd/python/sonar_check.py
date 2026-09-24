@@ -55,22 +55,31 @@ def _sonar_request(config, url, params):
     return r
 
 
+def get_sonar_branch(config):
+    """Rama de SonarQube sobre la que se analiza (sonarqube.branch), o None"""
+    branch = config.get('sonarqube', {}).get('branch')
+    return str(branch) if branch else None
+
+
 def get_sonar_metrics(config):
     """Obtiene métricas Overall Code y New Code desde SonarQube API"""
     sonar_config = config.get('sonarqube', {})
     base_url = sonar_config.get('url', '').rstrip('/')
     project_key = sonar_config.get('project_key', 'GALTTCMC_interno')
+    branch = get_sonar_branch(config)
 
     url = '{}/api/measures/component'.format(base_url)
 
     print('[*] Consultando SonarQube: {}'.format(url))
-    print('[*] Proyecto: {}'.format(project_key))
+    print('[*] Proyecto: {} (rama: {})'.format(project_key, branch or 'principal'))
 
     # Overall Code metrics
     params_overall = {
         'component': project_key,
         'metricKeys': 'coverage,bugs,vulnerabilities,code_smells,security_hotspots'
     }
+    if branch:
+        params_overall['branch'] = branch
     data_overall = _sonar_request(config, url, params_overall).json()
     measures_overall = data_overall.get('component', {}).get('measures', [])
 
@@ -88,6 +97,8 @@ def get_sonar_metrics(config):
         'metricKeys': new_metric_keys,
         'additionalFields': 'periods'
     }
+    if branch:
+        params_new['branch'] = branch
     data_new = _sonar_request(config, url, params_new).json()
     measures_new = data_new.get('component', {}).get('measures', [])
 
@@ -187,7 +198,11 @@ def get_quality_gate_status(config, analysis_id=None):
         print('[*] Consultando Quality Gate para analysis ID: {}'.format(analysis_id))
     else:
         params = {'projectKey': project_key}
-        print('[*] Consultando Quality Gate para proyecto: {}'.format(project_key))
+        branch = get_sonar_branch(config)
+        if branch:
+            params['branch'] = branch
+        print('[*] Consultando Quality Gate para proyecto: {} (rama: {})'.format(
+            project_key, branch or 'principal'))
 
     auth = (token, '') if token else None
 

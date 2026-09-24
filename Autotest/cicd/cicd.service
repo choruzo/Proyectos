@@ -1,16 +1,16 @@
 [Unit]
 Description=CI/CD Pipeline Service - GALTTCMC
-Documentation=https://YOUR_GIT_SERVER/YOUR_ORG/YOUR_REPO
+Documentation=https://git.indra.es/git/GALTTCMC/GALTTCMC
 After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=agent
-WorkingDirectory=/home/YOUR_USER/cicd
+WorkingDirectory=/home/agent/cicd
 
 # Comando principal
-ExecStart=/home/YOUR_USER/cicd/ci_cd.sh daemon
+ExecStart=/home/agent/cicd/ci_cd.sh daemon
 
 # Reinicio automático en caso de fallo
 Restart=always
@@ -18,11 +18,13 @@ RestartSec=30
 
 # Timeout para inicio y parada
 TimeoutStartSec=60
-TimeoutStopSec=30
+# Margen para que el daemon cierre en la BD el pipeline en curso al recibir
+# SIGTERM (ci_cd.sh reenvía la señal y espera al proceso del pipeline)
+TimeoutStopSec=180
 
 # Logging a ficheros propios
-StandardOutput=append:/home/YOUR_USER/cicd/logs/service.log
-StandardError=append:/home/YOUR_USER/cicd/logs/service_error.log
+StandardOutput=append:/home/agent/cicd/logs/service.log
+StandardError=append:/home/agent/cicd/logs/service_error.log
 
 # Variables de entorno
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
@@ -30,7 +32,7 @@ Environment="HOME=/home/agent"
 Environment="LANG=es_ES.UTF-8"
 
 # Cargar variables de entorno desde fichero (credenciales)
-EnvironmentFile=-/home/YOUR_USER/cicd/config/.env
+EnvironmentFile=-/home/agent/cicd/config/.env
 
 # Seguridad
 NoNewPrivileges=true

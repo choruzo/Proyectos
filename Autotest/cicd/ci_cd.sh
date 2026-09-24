@@ -6,8 +6,8 @@
 #   1. Monitorización de tags Git
 #   2. Compilación
 #   3. Análisis SonarQube
-#   4. Despliegue en vCenter + VM
-#   5. Generación de checksums (sha256sum + ZIP) y documentación Doxygen
+#   4. Generación de checksums (sha256sum + ZIP) y documentación Doxygen
+#   5. Despliegue en vCenter + VM
 #   6. Finalización y notificaciones
 #
 # Uso:
@@ -529,53 +529,30 @@ run_pipeline() {
     
     # Dar permisos de ejecución a los binarios
     log_info "Configurando permisos de ejecución..."
-    chmod +x "$compile_path/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64" 2>/dev/null || true
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner" 2>/dev/null || true
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/jre/bin/java" 2>/dev/null || true
     export JAVA_HOME=/usr/lib64/jvm/java-25-openjdk-25
     log_ok "Permisos configurados"
-    
+
     # Rutas locales en el directorio de compilación
-    local build_wrapper="$compile_path/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64"
     local sonar_scanner="$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner"
     local bw_output_dir="$compile_path/bw-output"
-    local compile_all_script="Development_TTCF/ttcf/utils/makefile/compile_all.sh"
-    
-    # PASO 1: Ejecutar compilación con build-wrapper para análisis C/C++
-    log_info "Ejecutando build-wrapper para capturar compilación C/C++..."
-    
-    if [[ ! -f "$build_wrapper" ]]; then
-        log_error "build-wrapper no encontrado en: $build_wrapper"
-        cleanup_on_error "build-wrapper no disponible" "sonarqube_prepare"
+
+    # PASO 1: Salida de build-wrapper para el análisis C/C++. La genera
+    # compile.sh al ejecutar build_DVDs.sh dentro de build-wrapper, así que
+    # aquí no se vuelve a compilar (build_DVDs.sh también genera mmi.jar).
+    if [[ ! -f "$bw_output_dir/build-wrapper-dump.json" && ! -f "$bw_output_dir/compile_commands.json" ]]; then
+        log_error "No existe la salida de build-wrapper en: $bw_output_dir"
+        cleanup_on_error "Salida de build-wrapper no encontrada (la genera la fase de compilación)" "sonarqube_prepare"
         return 1
     fi
-    
-    mkdir -p "$bw_output_dir"
-    
+    log_ok "Salida de build-wrapper disponible: $bw_output_dir"
+
     cd "$compile_path" || {
         log_error "No se puede acceder a: $compile_path"
         cleanup_on_error "Directorio de compilación no accesible" "sonarqube_prepare"
         return 1
     }
-    
-    # Verificar que existe el script de compilación
-    if [[ ! -f "$compile_path/$compile_all_script" ]]; then
-        log_error "Script de compilación no encontrado: $compile_path/$compile_all_script"
-        cleanup_on_error "compile_all.sh no encontrado" "sonarqube_prepare"
-        return 1
-    fi
-    
-    chmod +x "$compile_path/$compile_all_script"
-    
-    log_info "Ejecutando: $build_wrapper --out-dir $bw_output_dir $compile_all_script"
-    
-    if ! "$build_wrapper" --out-dir "$bw_output_dir" "$compile_path/$compile_all_script" 2>&1 | tee -a "$LOG_FILE"; then
-        log_error "build-wrapper falló durante la compilación"
-        cleanup_on_error "Error en build-wrapper" "sonarqube_prepare"
-        return 1
-    fi
-    
-    log_ok "build-wrapper completado"
     
     # PASO 2: Preparar análisis Java - Extraer mmi.jar en target/
     log_info "Preparando análisis Java: extrayendo mmi.jar..."
@@ -626,11 +603,16 @@ run_pipeline() {
         return 1
     }
     
-    log_info "Ejecutando: $sonar_scanner con proyecto GALTTCMC_interno"
+    # Rama fija (sonarqube.branch): cada análisis sobrescribe al anterior.
+    # sonar_check.py consulta la misma rama.
+    local sonar_branch
+    sonar_branch=$(config_get "sonarqube.branch" "V08_00_00_00")
+
+    log_info "Ejecutando: $sonar_scanner con proyecto GALTTCMC_interno (rama: $sonar_branch)"
     log_info "Directorio de trabajo: $compile_path"
     log_info "Configuración: sonar-project.properties"
-    
-    if ! $JAVA_HOME/bin/java -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name=V08_00_00_00 -Dsonar.projectVersion=V08_00_00_00 \
+
+    if ! "$JAVA_HOME/bin/java" -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name="$sonar_branch" -Dsonar.projectVersion="$sonar_branch" \
         2>&1 | tee -a "$LOG_FILE"; then
         log_error "sonar-scanner falló"
         cleanup_on_error "Error en análisis SonarQube" "sonarqube"
@@ -669,107 +651,10 @@ run_pipeline() {
     fi
     
     #---------------------------------------------------------------------------
-    # FASE 4: Despliegue en vCenter + VM
+    # FASE 4: Generación de checksums y documentación Doxygen
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[4/6] DESPLIEGUE"
-    log_info "───────────────────────────────────────────────────────────"
-    
-    db_query "UPDATE deployments SET status='deploying' WHERE id=$deployment_id"
-    
-    # Notificar inicio de despliegue
-    "$SCRIPT_DIR/scripts/notify.sh" wall deploying "$tag" 2>/dev/null || true
-    
-    # Obtener ruta del ISO generado
-    local iso_path
-    iso_path=$(cat "$compile_path/.last_iso_path" 2>/dev/null || find "$compile_path" -name "*.iso" -type f | head -1)
-    
-    if [[ -z "$iso_path" || ! -f "$iso_path" ]]; then
-        cleanup_on_error "ISO no encontrado después de compilación" "deploy"
-        return 1
-    fi
-    
-    log_info "ISO a desplegar: $iso_path"
-    
-    # 4.1 Subir ISO al datastore
-    log_info "Subiendo ISO al datastore..."
-    local upload_output
-    local upload_status=0
-    upload_output=$(python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" upload_iso "$iso_path" 2>&1) || upload_status=$?
-    echo "$upload_output" | tee -a "$LOG_FILE"
-    
-    if [[ $upload_status -ne 0 ]]; then
-        cleanup_on_error "Error subiendo ISO al datastore" "deploy_upload"
-        return 1
-    fi
-    
-    # Extraer el path remoto del ISO desde la salida
-    local remote_iso_path
-    remote_iso_path=$(echo "$upload_output" | grep -oP '\[REMOTE_ISO_PATH\] \K.*' || echo "")
-    
-    if [[ -z "$remote_iso_path" ]]; then
-        # Fallback: construir path manualmente si no se pudo extraer
-        local datastore iso_folder iso_filename
-        datastore=$(config_get "vcenter.datastore" "NAS_LIBRERIA")
-        iso_folder=$(config_get "vcenter.iso_path" "/ISO")
-        # Eliminar barra inicial del iso_folder para coincidir con Python
-        iso_folder="${iso_folder#/}"
-        iso_filename=$(basename "$iso_path")
-        remote_iso_path="[${datastore}] ${iso_folder}/${iso_filename}"
-        log_warn "No se pudo extraer path remoto, usando fallback: $remote_iso_path"
-    else
-        log_debug "Path remoto del ISO: $remote_iso_path"
-    fi
-    
-    # 4.2 Revertir snapshot (garantizar estado limpio antes de configurar hardware)
-    log_info "Revirtiendo snapshot de la VM..."
-    if ! python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" revert_snapshot; then
-        cleanup_on_error "Error al revertir snapshot" "deploy_snapshot"
-        return 1
-    fi
-
-    # 4.3 Esperar POWERED_OFF (el revert apaga la VM)
-    log_info "Esperando a que la VM esté apagada tras el revert..."
-    if ! python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" wait_powered_off; then
-        cleanup_on_error "Timeout esperando POWERED_OFF tras revert" "deploy_snapshot_wait"
-        return 1
-    fi
-
-    # 4.4 Configurar CD-ROM de la VM
-    log_info "Configurando CD-ROM de la VM..."
-    if ! python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" configure_cdrom "$remote_iso_path"; then
-        cleanup_on_error "Error configurando CD-ROM" "deploy_cdrom"
-        return 1
-    fi
-
-    # 4.5 Encender VM
-    log_info "Encendiendo VM..."
-    if ! python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" power_on; then
-        cleanup_on_error "Error encendiendo VM" "deploy_power"
-        return 1
-    fi
-
-    # 4.6 Esperar POWERED_ON antes del despliegue SSH
-    log_info "Esperando a que la VM esté encendida..."
-    if ! python3 "$SCRIPT_DIR/python/vcenter_api.py" "$CONFIG_FILE" wait_powered_on; then
-        cleanup_on_error "Timeout esperando POWERED_ON antes de SSH deploy" "deploy_power_wait"
-        return 1
-    fi
-
-    # 4.7 Despliegue vía SSH
-    log_info "Ejecutando despliegue en VM destino..."
-    if ! "$SCRIPT_DIR/scripts/deploy.sh"; then
-        cleanup_on_error "Error en despliegue SSH" "deploy_ssh"
-        return 1
-    fi
-    
-    log_ok "Despliegue completado"
-
-    #---------------------------------------------------------------------------
-    # FASE 5: Generación de checksums y documentación Doxygen
-    #---------------------------------------------------------------------------
-    log_info ""
-    log_info "[5/6] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
+    log_info "[4/6] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
     log_info "───────────────────────────────────────────────────────────"
 
     log_info "Generando documentación Doxygen..."
@@ -945,6 +830,103 @@ PY
     }
 
     log_ok "Checksums y ZIP generados correctamente en $compile_path"
+
+    #---------------------------------------------------------------------------
+    # FASE 5: Despliegue en vCenter + VM
+    #---------------------------------------------------------------------------
+    log_info ""
+    log_info "[5/6] DESPLIEGUE"
+    log_info "───────────────────────────────────────────────────────────"
+    
+    db_query "UPDATE deployments SET status='deploying' WHERE id=$deployment_id"
+    
+    # Notificar inicio de despliegue
+    "$SCRIPT_DIR/scripts/notify.sh" wall deploying "$tag" 2>/dev/null || true
+    
+    # Obtener ruta del ISO generado
+    local iso_path
+    iso_path=$(cat "$compile_path/.last_iso_path" 2>/dev/null || find "$compile_path" -name "*.iso" -type f | head -1)
+    
+    if [[ -z "$iso_path" || ! -f "$iso_path" ]]; then
+        cleanup_on_error "ISO no encontrado después de compilación" "deploy"
+        return 1
+    fi
+    
+    log_info "ISO a desplegar: $iso_path"
+    
+    # 4.1 Subir ISO al datastore
+    log_info "Subiendo ISO al datastore..."
+    local upload_output
+    local upload_status=0
+    upload_output=$(vcenter_call upload_iso "$iso_path" 2>&1) || upload_status=$?
+    echo "$upload_output" | tee -a "$LOG_FILE"
+    
+    if [[ $upload_status -ne 0 ]]; then
+        cleanup_on_error "Error subiendo ISO al datastore" "deploy_upload"
+        return 1
+    fi
+    
+    # Extraer el path remoto del ISO desde la salida
+    local remote_iso_path
+    remote_iso_path=$(echo "$upload_output" | grep -oP '\[REMOTE_ISO_PATH\] \K.*' || echo "")
+    
+    if [[ -z "$remote_iso_path" ]]; then
+        # Fallback: construir path manualmente si no se pudo extraer
+        local datastore iso_folder iso_filename
+        datastore=$(config_get "vcenter.datastore" "NAS_LIBRERIA")
+        iso_folder=$(config_get "vcenter.iso_path" "/ISO")
+        # Eliminar barra inicial del iso_folder para coincidir con Python
+        iso_folder="${iso_folder#/}"
+        iso_filename=$(basename "$iso_path")
+        remote_iso_path="[${datastore}] ${iso_folder}/${iso_filename}"
+        log_warn "No se pudo extraer path remoto, usando fallback: $remote_iso_path"
+    else
+        log_debug "Path remoto del ISO: $remote_iso_path"
+    fi
+    
+    # 4.2 Revertir snapshot (garantizar estado limpio antes de configurar hardware)
+    log_info "Revirtiendo snapshot de la VM..."
+    if ! vcenter_call revert_snapshot; then
+        cleanup_on_error "Error al revertir snapshot" "deploy_snapshot"
+        return 1
+    fi
+
+    # 4.3 Esperar POWERED_OFF (el revert apaga la VM)
+    log_info "Esperando a que la VM esté apagada tras el revert..."
+    if ! vcenter_call wait_powered_off; then
+        cleanup_on_error "Timeout esperando POWERED_OFF tras revert" "deploy_snapshot_wait"
+        return 1
+    fi
+
+    # 4.4 Configurar CD-ROM de la VM
+    log_info "Configurando CD-ROM de la VM..."
+    if ! vcenter_call configure_cdrom "$remote_iso_path"; then
+        cleanup_on_error "Error configurando CD-ROM" "deploy_cdrom"
+        return 1
+    fi
+
+    # 4.5 Encender VM
+    log_info "Encendiendo VM..."
+    if ! vcenter_call power_on; then
+        cleanup_on_error "Error encendiendo VM" "deploy_power"
+        return 1
+    fi
+
+    # 4.6 Esperar POWERED_ON antes del despliegue SSH
+    log_info "Esperando a que la VM esté encendida..."
+    if ! vcenter_call wait_powered_on; then
+        cleanup_on_error "Timeout esperando POWERED_ON antes de SSH deploy" "deploy_power_wait"
+        return 1
+    fi
+
+    # 4.7 Despliegue vía SSH
+    log_info "Ejecutando despliegue en VM destino..."
+    if ! "$SCRIPT_DIR/scripts/deploy.sh"; then
+        cleanup_on_error "Error en despliegue SSH" "deploy_ssh"
+        return 1
+    fi
+    
+    log_ok "Despliegue completado"
 
     #---------------------------------------------------------------------------
     # FASE 6: Finalización y notificaciones
