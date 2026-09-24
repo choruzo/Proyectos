@@ -1,174 +1,91 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
-{% block title %}Logs - GALTTCMC CI/CD Pipeline{% endblock %}
+{% block title %}Logs · GALTTCMC CI/CD{% endblock %}
+{% block crumb %}logs{% endblock %}
 
 {% block content %}
 <div x-data="logsData()">
-    <!-- Header -->
-    <div class="mb-8">
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Logs Viewer</h2>
-        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Visualización de logs del pipeline CI/CD
-        </p>
+
+    <div class="page-head">
+        <div>
+            <div class="eyebrow">$ tail -f logs/*.log</div>
+            <h1>Logs</h1>
+            <p>Visor de logs del pipeline CI/CD</p>
+        </div>
     </div>
-    
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <!-- Sidebar: Log Files List -->
-        <div class="lg:col-span-1">
-            <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Log Files</h3>
-                </div>
-                <div class="max-h-[calc(100vh-300px)] overflow-y-auto">
-                    <ul class="divide-y divide-gray-200 dark:divide-gray-700">
-                        <template x-for="logFile in logFiles" :key="logFile.name">
-                            <li>
-                                <button @click="selectLogFile(logFile.name)" 
-                                        :class="selectedFile === logFile.name ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''"
-                                        class="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex-1 min-w-0">
-                                            <p class="text-sm font-medium text-gray-900 dark:text-white truncate" x-text="logFile.name"></p>
-                                            <p class="text-xs text-gray-500 dark:text-gray-400" x-text="logFile.size_mb + ' MB'"></p>
-                                        </div>
-                                        <svg x-show="selectedFile === logFile.name" class="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                                        </svg>
-                                    </div>
-                                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1" x-text="logFile.modified"></p>
-                                </button>
-                            </li>
-                        </template>
-                        <li x-show="logFiles.length === 0">
-                            <div class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                                </svg>
-                                <p class="mt-2 text-sm">No log files found</p>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
+
+    <div class="grid grid-1-3">
+        <!-- Lista de ficheros -->
+        <div class="card" style="overflow:hidden">
+            <div class="card-head">
+                <h2>{{ icon('file', 'ico-sm') }} Ficheros</h2>
+                <span class="count" x-text="logFiles.length"></span>
+            </div>
+            <div class="filelist">
+                <template x-for="f in logFiles" :key="f.name">
+                    <button type="button" class="file-item" :class="{ 'on': selectedFile === f.name }" @click="selectLogFile(f.name)">
+                        <span class="fn" x-text="f.name" :title="f.name"></span>
+                        <span class="fm"><span class="mono" x-text="f.modified"></span><span class="mono" x-text="f.size_mb + ' MB'"></span></span>
+                    </button>
+                </template>
+                <div class="empty" x-show="logFiles.length === 0" x-cloak>{{ icon('file', 'ico-lg') }}<span>No hay ficheros de log</span></div>
             </div>
         </div>
-        
-        <!-- Main: Log Content -->
-        <div class="lg:col-span-3">
-            <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-                <!-- Controls -->
-                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <div class="flex flex-wrap gap-4 items-center">
-                        <div class="flex-1 min-w-0">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search</label>
-                            <input x-model="searchQuery" 
-                                   @keyup.enter="viewLogContent()"
-                                   :disabled="liveMode"
-                                   :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
-                                   type="text" 
-                                   placeholder="Filter log lines..."
-                                   class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lines</label>
-                            <select x-model="maxLines" 
-                                    :disabled="liveMode"
-                                    :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
-                                    class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
-                                <option value="100">Last 100</option>
-                                <option value="500">Last 500</option>
-                                <option value="1000">Last 1000</option>
-                                <option value="5000">Last 5000</option>
-                            </select>
-                        </div>
-                        
-                        <div class="flex gap-2 items-end">
-                            <button @click="viewLogContent()" 
-                                    :disabled="liveMode"
-                                    :class="liveMode ? 'opacity-50 cursor-not-allowed' : ''"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                </svg>
-                                Refresh
-                            </button>
-                            <button @click="toggleLiveTail()"
-                                    :disabled="!selectedFile"
-                                    :class="liveMode ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500' : 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                                <template x-if="liveMode">
-                                    <span class="relative flex h-3 w-3 mr-2">
-                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-300 opacity-75"></span>
-                                        <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
-                                    </span>
-                                </template>
-                                <template x-if="!liveMode">
-                                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.957 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.957-9.542-7z"/>
-                                    </svg>
-                                </template>
-                                <span x-text="liveMode ? 'Live' : 'Live Tail'"></span>
-                            </button>
-                        </div>
+
+        <!-- Contenido -->
+        <div class="stack" style="min-width:0">
+            <div class="toolbar">
+                <div class="field grow">
+                    <label for="log-search">Buscar</label>
+                    <div class="input-icon">
+                        {{ icon('search', 'ico-sm') }}
+                        <input id="log-search" class="input" type="text" x-model="searchQuery" @keyup.enter="viewLogContent()"
+                               :disabled="liveMode" placeholder="Filtrar líneas… (Enter)">
                     </div>
                 </div>
-                
-                <!-- Log Content -->
-                <div x-show="!selectedFile" class="px-4 py-16 text-center text-gray-500 dark:text-gray-400">
-                    <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <p class="mt-4 text-lg">Select a log file to view</p>
+                <div class="field">
+                    <label for="log-lines">Líneas</label>
+                    <select id="log-lines" class="input" x-model="maxLines" :disabled="liveMode" @change="viewLogContent()">
+                        <option value="100">Últimas 100</option>
+                        <option value="500">Últimas 500</option>
+                        <option value="1000">Últimas 1000</option>
+                        <option value="5000">Últimas 5000</option>
+                    </select>
                 </div>
-                
-                <div x-show="selectedFile && !logContent" class="px-4 py-16 text-center">
-                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                    <p class="mt-4 text-gray-500 dark:text-gray-400">Loading log content...</p>
+                <button class="btn" @click="viewLogContent()" :disabled="liveMode || !selectedFile">{{ icon('refresh', 'ico-sm') }} Recargar</button>
+                <button class="btn" :class="{ 'live': liveMode }" @click="toggleLiveTail()" :disabled="!selectedFile"
+                        :aria-pressed="liveMode.toString()">
+                    <span class="dot" :class="liveMode ? 'ok' : ''"></span>
+                    <span x-text="liveMode ? 'Live · detener' : 'Live tail'"></span>
+                </button>
+            </div>
+
+            <div class="term">
+                <div class="term-bar">
+                    <span>
+                        <span class="file" x-text="selectedFile || 'ningún fichero seleccionado'"></span>
+                        <template x-if="selectedFile && logContent !== null">
+                            <span> · <span x-text="logInfo.displayed_lines"></span>/<span x-text="logInfo.total_lines"></span> líneas</span>
+                        </template>
+                        <span x-show="liveMode" class="badge b-pass upper" style="margin-left:.45rem"><span class="dot ok" style="width:6px;height:6px"></span>live</span>
+                    </span>
+                    <span class="legend">
+                        <span><i style="background:var(--rojo)"></i>ERROR</span>
+                        <span><i style="background:var(--ambar)"></i>WARN</span>
+                        <span><i style="background:var(--verde)"></i>OK</span>
+                        <span><i style="background:var(--azul)"></i>INFO</span>
+                        <span><i style="background:var(--dim)"></i>DEBUG</span>
+                    </span>
                 </div>
-                
-                <div x-show="selectedFile && logContent" class="p-4">
-                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                            Showing <span class="font-medium" x-text="logInfo.displayed_lines"></span> of 
-                            <span class="font-medium" x-text="logInfo.total_lines"></span> lines
-                            <span x-show="liveMode"
-                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                <span class="relative flex h-2 w-2">
-                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                    <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                </span>
-                                LIVE
-                            </span>
-                        </div>
-                        <!-- Color legend -->
-                        <div class="flex flex-wrap gap-3 text-xs">
-                            <span class="flex items-center gap-1">
-                                <span class="inline-block w-2 h-2 rounded-full" style="background:#f87171"></span>
-                                <span class="text-gray-500 dark:text-gray-400">ERROR</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="inline-block w-2 h-2 rounded-full" style="background:#facc15"></span>
-                                <span class="text-gray-500 dark:text-gray-400">WARN</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="inline-block w-2 h-2 rounded-full" style="background:#4ade80"></span>
-                                <span class="text-gray-500 dark:text-gray-400">OK</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="inline-block w-2 h-2 rounded-full" style="background:#60a5fa"></span>
-                                <span class="text-gray-500 dark:text-gray-400">INFO</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
-                                <span class="text-gray-500 dark:text-gray-400">DEBUG</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="bg-gray-900 rounded-lg overflow-hidden">
-                        <pre x-ref="logContainer" class="p-4 text-xs font-mono overflow-x-auto max-h-[calc(100vh-450px)] overflow-y-auto"><code x-html="colorizeLog(logContent)"></code></pre>
-                    </div>
+
+                <div x-show="!selectedFile" class="empty" style="min-height:320px;justify-content:center">
+                    {{ icon('logs', 'ico-lg') }}<span>Selecciona un fichero de log para verlo</span>
                 </div>
+                <div x-show="selectedFile && loadingLog" x-cloak class="empty" style="min-height:320px;justify-content:center">
+                    <span class="spinner lg"></span><span>Cargando…</span>
+                </div>
+                <pre x-show="selectedFile && !loadingLog" x-cloak x-ref="logContainer"><code x-html="colorizeLog(logContent)"></code><span x-show="logContent === ''" class="log-debug">(sin coincidencias)</span></pre>
             </div>
         </div>
     </div>
@@ -182,13 +99,14 @@ function logsData() {
         logFiles: [],
         selectedFile: null,
         logContent: null,
+        loadingLog: false,
         logInfo: {},
         searchQuery: '',
         maxLines: 500,
         liveMode: false,
         liveTailTimer: null,
         lastTotalLines: 0,
-        
+
         async init() {
             await this.loadLogFiles();
             window.pageRefreshCallback = async () => {
@@ -198,16 +116,17 @@ function logsData() {
                 }
             };
         },
-        
+
         async loadLogFiles() {
             try {
                 const response = await fetch('/api/logs/list');
-                this.logFiles = await response.json();
+                const data = await response.json();
+                this.logFiles = Array.isArray(data) ? data : [];
             } catch (error) {
                 console.error('Error loading log files:', error);
             }
         },
-        
+
         async selectLogFile(filename) {
             this.stopLiveTail();
             this.selectedFile = filename;
@@ -216,37 +135,35 @@ function logsData() {
             this.lastTotalLines = 0;
             await this.viewLogContent();
         },
-        
+
         async viewLogContent() {
             if (!this.selectedFile) return;
-            
+            this.loadingLog = true;
             try {
-                const params = new URLSearchParams({
-                    lines: this.maxLines,
-                    search: this.searchQuery
-                });
-                
-                const response = await fetch(`/api/logs/view/${this.selectedFile}?${params}`);
+                const params = new URLSearchParams({ lines: this.maxLines, search: this.searchQuery });
+                const response = await fetch(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`);
                 const data = await response.json();
-                
+                if (data.error) {
+                    this.logContent = 'Error: ' + data.error;
+                    this.logInfo = { total_lines: 0, displayed_lines: 0 };
+                    return;
+                }
                 this.logContent = data.content;
                 this.lastTotalLines = data.file_total_lines || data.total_lines;
-                this.logInfo = {
-                    total_lines: data.total_lines,
-                    displayed_lines: data.displayed_lines
-                };
+                this.logInfo = { total_lines: data.total_lines, displayed_lines: data.displayed_lines };
             } catch (error) {
                 console.error('Error loading log content:', error);
                 this.logContent = 'Error loading log file: ' + error.message;
+            } finally {
+                this.loadingLog = false;
+                await this.$nextTick();
+                this.scrollToBottom();
             }
         },
 
         toggleLiveTail() {
-            if (this.liveMode) {
-                this.stopLiveTail();
-            } else {
-                this.startLiveTail();
-            }
+            if (this.liveMode) this.stopLiveTail();
+            else this.startLiveTail();
         },
 
         startLiveTail() {
@@ -268,11 +185,11 @@ function logsData() {
             if (!this.selectedFile || !this.liveMode || this.logContent === null) return;
             try {
                 const params = new URLSearchParams({ start_line: this.lastTotalLines });
-                const response = await fetch(`/api/logs/view/${this.selectedFile}?${params}`);
+                const response = await fetch(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`);
                 const data = await response.json();
 
                 if (data.file_total_lines < this.lastTotalLines) {
-                    // File was rotated/truncated — reload fully
+                    // Fichero rotado/truncado: recarga completa
                     this.stopLiveTail();
                     await this.viewLogContent();
                     return;
@@ -321,7 +238,7 @@ function logsData() {
                 .map(function(line) {
                     return '<span class="' + getLineClass(line) + '">' + escapeHtml(line) + '</span>';
                 })
-                .join('\n');
+                .join('');
         }
     }
 }

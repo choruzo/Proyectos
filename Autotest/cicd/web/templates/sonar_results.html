@@ -1,170 +1,137 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
-{% block title %}SonarQube Results - GALTTCMC CI/CD Pipeline{% endblock %}
+{% block title %}SonarQube · GALTTCMC CI/CD{% endblock %}
+{% block crumb %}sonar-results{% endblock %}
 
 {% block content %}
 <div x-data="sonarData()">
-    <!-- Header -->
-    <div class="mb-8">
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">SonarQube Results</h2>
-        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Análisis de calidad de código y métricas SonarQube
-        </p>
+
+    <div class="page-head">
+        <div>
+            <div class="eyebrow">$ python3.6 python/sonar_check.py</div>
+            <h1>SonarQube</h1>
+            <p>Calidad de código por tag · el Quality Gate evalúa solo el código nuevo</p>
+        </div>
+        <button class="btn" @click="refreshAll()">{{ icon('refresh', 'ico-sm') }} Actualizar</button>
     </div>
-    
-    <!-- Trends Chart -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-            Quality Trends (Last 10 Deployments)
-        </h3>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-                <canvas id="coverageChart" height="200"></canvas>
-            </div>
-            <div>
-                <canvas id="issuesChart" height="200"></canvas>
-            </div>
+
+    <!-- Resumen del último análisis -->
+    <div class="grid grid-4 mb" x-show="results.length > 0" x-cloak>
+        <div class="card kpi">
+            <span class="kpi-label">{{ icon('sonar', 'ico-sm') }} Último Quality Gate</span>
+            <span class="kpi-value" :class="gateValueClass(results[0] && results[0].quality_gate)" x-text="(results[0] && results[0].quality_gate) || 'N/A'"></span>
+            <span class="kpi-foot mono" x-text="results[0] ? results[0].tag : ''"></span>
+        </div>
+        <div class="card kpi" style="animation-delay:.04s">
+            <span class="kpi-label">{{ icon('percent', 'ico-sm') }} New coverage</span>
+            <span class="kpi-value" :class="covClass(results[0] && results[0].new_coverage)">
+                <span x-text="fmt(results[0] && results[0].new_coverage)"></span><span class="unit" x-show="results[0] && results[0].new_coverage !== null">%</span>
+            </span>
+            <div class="bar"><span :style="'width:' + Math.min(100, (results[0] && results[0].new_coverage) || 0) + '%'"></span></div>
+        </div>
+        <div class="card kpi" style="animation-delay:.08s">
+            <span class="kpi-label">{{ icon('alert', 'ico-sm') }} New bugs / vulner.</span>
+            <span class="kpi-value">
+                <span :class="zeroClass(results[0] && results[0].new_bugs)" x-text="fmt(results[0] && results[0].new_bugs)"></span><span class="unit">/</span><span :class="zeroClass(results[0] && results[0].new_vulnerabilities)" x-text="fmt(results[0] && results[0].new_vulnerabilities)"></span>
+            </span>
+            <span class="kpi-foot">umbral: 0 / 0</span>
+        </div>
+        <div class="card kpi" style="animation-delay:.12s">
+            <span class="kpi-label">{{ icon('check-circle', 'ico-sm') }} Gates superados</span>
+            <span class="kpi-value"><span x-text="passedCount()"></span><span class="unit" x-text="'/ ' + results.length"></span></span>
+            <span class="kpi-foot">en los análisis listados</span>
         </div>
     </div>
-    
-    <!-- Results Table -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-                Recent Analysis Results
-            </h3>
-            <button @click="loadResults()" 
-                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Refresh
-            </button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tag</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Quality Gate</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="New Code only">New Bugs</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="New Code only">New Vulner.</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="New Code only">New Smells</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="New Code only">New Hotspots</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="New Code coverage (umbral ≥80%)">New Coverage</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="Overall Code (informativo)">Overall Coverage</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="Overall Code (informativo)">Overall Bugs</th>
-                    </tr>
-                    <tr class="bg-blue-50 dark:bg-blue-900/20">
-                        <td colspan="3"></td>
-                        <td colspan="5" class="px-6 py-1 text-xs text-blue-600 dark:text-blue-300 font-semibold">
-                            ← Evaluado por el Quality Gate (código nuevo)
-                        </td>
-                        <td colspan="2" class="px-6 py-1 text-xs text-gray-400 dark:text-gray-500">
-                            Informativo (código global)
-                        </td>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    <template x-for="result in results" :key="result.sonar_id">
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="result.tag"></div>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="result.date"></td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                      :class="{
-                                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': result.quality_gate === 'PASSED' || result.quality_gate === 'OK',
-                                          'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': result.quality_gate === 'FAILED' || result.quality_gate === 'ERROR',
-                                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': result.quality_gate === 'WARN',
-                                          'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300': !result.quality_gate || result.quality_gate === 'UNKNOWN'
-                                      }"
-                                      x-text="result.quality_gate || 'N/A'"></span>
-                            </td>
-                            <!-- New Bugs -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium"
-                                      :class="result.new_bugs === null ? 'text-gray-400 dark:text-gray-500' :
-                                              result.new_bugs === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
-                                      x-text="result.new_bugs !== null ? result.new_bugs : '—'"></span>
-                            </td>
-                            <!-- New Vulnerabilities -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium"
-                                      :class="result.new_vulnerabilities === null ? 'text-gray-400 dark:text-gray-500' :
-                                              result.new_vulnerabilities === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
-                                      x-text="result.new_vulnerabilities !== null ? result.new_vulnerabilities : '—'"></span>
-                            </td>
-                            <!-- New Code Smells -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium"
-                                      :class="result.new_code_smells === null ? 'text-gray-400 dark:text-gray-500' :
-                                              result.new_code_smells <= 10 ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'"
-                                      x-text="result.new_code_smells !== null ? result.new_code_smells : '—'"></span>
-                            </td>
-                            <!-- New Security Hotspots -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium"
-                                      :class="result.new_security_hotspots === null ? 'text-gray-400 dark:text-gray-500' :
-                                              result.new_security_hotspots === 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'"
-                                      x-text="result.new_security_hotspots !== null ? result.new_security_hotspots : '—'"></span>
-                            </td>
-                            <!-- New Coverage (evaluado por Quality Gate, ≥80%) -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium"
-                                      :class="result.new_coverage === null ? 'text-gray-400 dark:text-gray-500' :
-                                              result.new_coverage >= 80 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
-                                      x-text="result.new_coverage !== null ? result.new_coverage + '%' : '—'"></span>
-                            </td>
-                            <!-- Overall Coverage (informativo, gris) -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-500 dark:text-gray-400"
-                                      x-text="result.coverage !== null ? result.coverage + '%' : '—'"></span>
-                            </td>
-                            <!-- Overall Bugs (informativo, gris) -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-500 dark:text-gray-400"
-                                      x-text="result.bugs !== null ? result.bugs : '—'"></span>
-                            </td>
-                        </tr>
-                    </template>
-                    <tr x-show="results.length === 0">
-                        <td colspan="10" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                            <p class="mt-2">No SonarQube results found</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-    <!-- Quality Thresholds Info -->
-    <div class="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <div class="flex">
-            <div class="flex-shrink-0">
-                <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                </svg>
-            </div>
-            <div class="ml-3">
-                <h3 class="text-sm font-medium text-blue-800 dark:text-blue-200">Quality Gate — Código Nuevo</h3>
-                <div class="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                    <p class="mb-2">El Quality Gate de SonarQube evalúa solo el <strong>código nuevo</strong> introducido desde el último tag base. Las métricas globales (Overall) son informativas.</p>
-                    <ul class="list-disc list-inside space-y-1">
-                        <li>New Bugs: 0</li>
-                        <li>New Vulnerabilities: 0</li>
-                        <li>New Coverage: ≥ 80%</li>
-                        <li>New Security Hotspots revisados: 100%</li>
-                        <li>New Duplications: &lt; 3%</li>
-                        <li>Reliability / Security / Maintainability rating: A</li>
-                    </ul>
+
+    <!-- Tendencias -->
+    <div class="grid grid-2 mb">
+        <div class="card" style="animation-delay:.14s">
+            <div class="card-head">
+                <h2>{{ icon('chart', 'ico-sm') }} Cobertura · últimos 10</h2>
+                <div class="legend">
+                    <span><i style="background:var(--verde)"></i>new</span>
+                    <span><i style="background:var(--azul)"></i>overall</span>
+                    <span><i style="background:var(--ambar)"></i>umbral 80%</span>
                 </div>
             </div>
+            <div class="card-body"><div class="chart-box"><canvas id="coverageChart"></canvas></div></div>
+        </div>
+        <div class="card" style="animation-delay:.18s">
+            <div class="card-head">
+                <h2>{{ icon('alert', 'ico-sm') }} Incidencias nuevas · últimos 10</h2>
+                <div class="legend">
+                    <span><i style="background:var(--rojo)"></i>bugs</span>
+                    <span><i style="background:var(--ambar)"></i>vulner.</span>
+                    <span><i style="background:var(--azul)"></i>smells</span>
+                </div>
+            </div>
+            <div class="card-body"><div class="chart-box"><canvas id="issuesChart"></canvas></div></div>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="card mb" style="animation-delay:.22s">
+        <div class="card-head">
+            <h2>{{ icon('list', 'ico-sm') }} Análisis recientes</h2>
+            <span class="meta" x-text="results.length + ' resultados'"></span>
+        </div>
+        <div class="table-wrap">
+            <table class="t">
+                <thead>
+                    <tr class="group">
+                        <th colspan="3"></th>
+                        <th colspan="5" class="qg">← Evaluado por el Quality Gate (código nuevo)</th>
+                        <th colspan="2">Informativo (código global)</th>
+                    </tr>
+                    <tr>
+                        <th>Tag</th>
+                        <th>Fecha</th>
+                        <th>Quality Gate</th>
+                        <th class="r" title="Solo código nuevo · umbral 0">Bugs</th>
+                        <th class="r" title="Solo código nuevo · umbral 0">Vulner.</th>
+                        <th class="r" title="Solo código nuevo · umbral ≤10">Smells</th>
+                        <th class="r" title="Solo código nuevo · umbral 0">Hotspots</th>
+                        <th class="r" title="Cobertura código nuevo · umbral ≥80%">Coverage</th>
+                        <th class="r">Coverage</th>
+                        <th class="r">Bugs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(r, i) in results" :key="r.sonar_id">
+                        <tr :style="'animation-delay:' + (i * 0.025) + 's'">
+                            <td class="nowrap"><span class="tag" x-text="r.tag"></span></td>
+                            <td class="dim mono nowrap" x-text="r.date"></td>
+                            <td><span class="badge upper" :class="gateClass(r.quality_gate)" x-text="r.quality_gate || 'N/A'"></span></td>
+                            <td class="num" :class="zeroClass(r.new_bugs)" x-text="fmt(r.new_bugs)"></td>
+                            <td class="num" :class="zeroClass(r.new_vulnerabilities)" x-text="fmt(r.new_vulnerabilities)"></td>
+                            <td class="num" :class="r.new_code_smells === null ? 'v-dim' : (r.new_code_smells <= 10 ? 'v-ok' : 'v-warn')" x-text="fmt(r.new_code_smells)"></td>
+                            <td class="num" :class="r.new_security_hotspots === null ? 'v-dim' : (r.new_security_hotspots === 0 ? 'v-ok' : 'v-warn')" x-text="fmt(r.new_security_hotspots)"></td>
+                            <td class="num" :class="covClass(r.new_coverage)" x-text="r.new_coverage !== null ? r.new_coverage + '%' : '—'"></td>
+                            <td class="num dim" x-text="r.coverage !== null ? r.coverage + '%' : '—'"></td>
+                            <td class="num dim" x-text="fmt(r.bugs)"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <div class="empty" x-show="results.length === 0" x-cloak>{{ icon('sonar', 'ico-lg') }}<span>No hay resultados de SonarQube</span></div>
+        </div>
+    </div>
+
+    <!-- Umbrales -->
+    <div class="notice info">
+        <span style="color:var(--azul)">{{ icon('info') }}</span>
+        <div>
+            <h3>Quality Gate — código nuevo</h3>
+            <p>SonarQube evalúa solo el <strong>código nuevo</strong> introducido desde el último tag base. Las métricas globales (overall) son informativas.</p>
+            <ul>
+                <li>New Bugs: <span class="mono">0</span></li>
+                <li>New Vulnerabilities: <span class="mono">0</span></li>
+                <li>New Coverage: <span class="mono">≥ 80%</span></li>
+                <li>New Security Hotspots revisados: <span class="mono">100%</span></li>
+                <li>New Duplications: <span class="mono">&lt; 3%</span></li>
+                <li>Reliability / Security / Maintainability rating: <span class="mono">A</span></li>
+            </ul>
         </div>
     </div>
 </div>
@@ -177,142 +144,96 @@ function sonarData() {
         results: [],
         coverageChart: null,
         issuesChart: null,
-        
+
         async init() {
-            await this.loadResults();
-            await this.loadTrends();
-            window.pageRefreshCallback = async () => {
-                await this.loadResults();
-                await this.loadTrends();
-            };
+            await this.refreshAll();
+            window.pageRefreshCallback = () => this.refreshAll();
         },
-        
+
+        async refreshAll() {
+            await Promise.all([this.loadResults(), this.loadTrends()]);
+        },
+
+        fmt(v) { return v !== null && v !== undefined ? v : '—'; },
+        zeroClass(v) { return v === null || v === undefined ? 'v-dim' : (v === 0 ? 'v-ok' : 'v-fail'); },
+        covClass(v) { return v === null || v === undefined ? 'v-dim' : (v >= 80 ? 'v-ok' : 'v-fail'); },
+        gateValueClass(g) {
+            const c = gateClass(g);
+            return { 'b-pass': 'v-ok', 'b-fail': 'v-fail', 'b-inc': 'v-warn' }[c] || 'v-dim';
+        },
+        passedCount() {
+            return this.results.filter(r => r.quality_gate === 'PASSED' || r.quality_gate === 'OK').length;
+        },
+
         async loadResults() {
             try {
                 const response = await fetch('/api/sonar/results');
                 const data = await response.json();
-                
-                // Verificar si hay error en la respuesta
                 if (data.error) {
                     console.error('API error:', data.error);
                     this.results = [];
                     return;
                 }
-                
-                this.results = data;
-                console.log('Loaded ' + this.results.length + ' SonarQube results');
+                this.results = Array.isArray(data) ? data : [];
             } catch (error) {
                 console.error('Error loading SonarQube results:', error);
                 this.results = [];
             }
         },
-        
+
         async loadTrends() {
             try {
                 const response = await fetch('/api/sonar/trends');
                 const data = await response.json();
-                
-                // Coverage chart
-                const coverageCtx = document.getElementById('coverageChart').getContext('2d');
-                if (this.coverageChart) {
-                    this.coverageChart.destroy();
-                }
-                this.coverageChart = new Chart(coverageCtx, {
+                if (!data.labels) return;
+
+                const verde = cssVar('--verde'), azul = cssVar('--azul'), ambar = cssVar('--ambar'), rojo = cssVar('--rojo');
+                const grid = { color: alpha(cssVar('--line'), 0.6) };
+                const xAxis = { grid: { display: false }, ticks: { font: { family: cssVar('--mono'), size: 10 }, maxRotation: 35 } };
+                const line = (label, values, color, extra) => Object.assign({
+                    label: label, data: values, borderColor: color, backgroundColor: alpha(color, 0.12),
+                    pointBackgroundColor: color, pointRadius: 3, pointHoverRadius: 5, borderWidth: 2, tension: 0.35
+                }, extra || {});
+
+                // Cobertura
+                const covCtx = document.getElementById('coverageChart').getContext('2d');
+                if (this.coverageChart) this.coverageChart.destroy();
+                this.coverageChart = new Chart(covCtx, {
                     type: 'line',
                     data: {
                         labels: data.labels,
                         datasets: [
-                            {
-                                label: 'New Coverage % (umbral ≥80%)',
-                                data: data.new_coverage,
-                                borderColor: 'rgb(59, 130, 246)',
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                tension: 0.4,
-                                fill: false,
-                                spanGaps: false
-                            },
-                            {
-                                label: 'Overall Coverage %',
-                                data: data.coverage,
-                                borderColor: 'rgb(34, 197, 94)',
-                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                                tension: 0.4,
-                                fill: true,
-                                borderDash: [4, 4]
-                            }
+                            line('New coverage %', data.new_coverage, verde, { fill: true, spanGaps: false }),
+                            line('Overall coverage %', data.coverage, azul, { borderDash: [4, 4], pointRadius: 2 }),
+                            line('Umbral 80%', data.labels.map(() => 80), ambar, { borderDash: [2, 3], borderWidth: 1, pointRadius: 0, pointHoverRadius: 0, backgroundColor: 'transparent' })
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: 100,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value + '%';
-                                    }
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                display: true
-                            }
-                        }
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        scales: { x: xAxis, y: { beginAtZero: true, max: 100, grid: grid, ticks: { callback: v => v + '%' } } },
+                        plugins: { legend: { display: false } }
                     }
                 });
-                
-                // Issues chart
-                const issuesCtx = document.getElementById('issuesChart').getContext('2d');
-                if (this.issuesChart) {
-                    this.issuesChart.destroy();
-                }
-                this.issuesChart = new Chart(issuesCtx, {
+
+                // Incidencias
+                const issCtx = document.getElementById('issuesChart').getContext('2d');
+                if (this.issuesChart) this.issuesChart.destroy();
+                this.issuesChart = new Chart(issCtx, {
                     type: 'line',
                     data: {
                         labels: data.labels,
                         datasets: [
-                            {
-                                label: 'New Bugs',
-                                data: data.bugs,
-                                borderColor: 'rgb(239, 68, 68)',
-                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'New Vulnerabilities',
-                                data: data.vulnerabilities,
-                                borderColor: 'rgb(249, 115, 22)',
-                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'New Code Smells',
-                                data: data.code_smells,
-                                borderColor: 'rgb(234, 179, 8)',
-                                backgroundColor: 'rgba(234, 179, 8, 0.1)',
-                                tension: 0.4
-                            }
+                            line('New bugs', data.bugs, rojo),
+                            line('New vulnerabilities', data.vulnerabilities, ambar),
+                            line('New code smells', data.code_smells, azul)
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    precision: 0
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                position: 'top'
-                            }
-                        }
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        scales: { x: xAxis, y: { beginAtZero: true, grid: grid, ticks: { precision: 0 } } },
+                        plugins: { legend: { display: false } }
                     }
                 });
             } catch (error) {

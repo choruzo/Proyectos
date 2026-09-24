@@ -2,162 +2,252 @@
  * GALTTCMC CI/CD Web UI - JavaScript Utilities
  */
 
-// Toast notification system
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    
-    const colors = {
-        success: 'bg-green-500',
-        error: 'bg-red-500',
-        warning: 'bg-yellow-500',
-        info: 'bg-blue-500'
-    };
-    
-    const icons = {
-        success: `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-        </svg>`,
-        error: `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-        </svg>`,
-        warning: `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-        </svg>`,
-        info: `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-        </svg>`
-    };
-    
-    const toast = document.createElement('div');
-    toast.className = `${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 transform transition-all duration-300 ease-in-out`;
+// ==================== Estado / insignias ====================
 
-    // Icon (trusted static SVG markup, not user-controlled)
-    const iconWrapper = document.createElement('div');
-    iconWrapper.innerHTML = icons[type];
+var RUNNING_STATUSES = ['compiling', 'analyzing', 'deploying'];
+
+function isRunning(status) {
+    return RUNNING_STATUSES.indexOf(status) !== -1;
+}
+
+// Clase de insignia por estado de deployment (color siempre semántico)
+function statusClass(status) {
+    if (status === 'success') return 'b-pass';
+    if (status === 'failed') return 'b-fail';
+    if (isRunning(status)) return 'b-info';
+    if (status === 'pending') return 'b-inc';
+    return 'b-dim';
+}
+
+// Clase de insignia para el Quality Gate de SonarQube
+function gateClass(gate) {
+    if (gate === 'PASSED' || gate === 'OK') return 'b-pass';
+    if (gate === 'FAILED' || gate === 'ERROR') return 'b-fail';
+    if (gate === 'WARN') return 'b-inc';
+    return 'b-dim';
+}
+
+// Segmentos de progreso (5 fases) a partir del estado global del deployment
+var PIPELINE_PHASES = [
+    { key: 'checkout', label: 'Git Checkout' },
+    { key: 'compile',  label: 'Compilación' },
+    { key: 'analyze',  label: 'SonarQube' },
+    { key: 'deploy',   label: 'vCenter Deploy' },
+    { key: 'notify',   label: 'SSH Install' }
+];
+
+function phaseSegs(status) {
+    var numDone = { pending: 0, compiling: 1, analyzing: 2, deploying: 3, success: 5, failed: 0 }[status] || 0;
+    return PIPELINE_PHASES.map(function(p, i) {
+        var cls = '';
+        if (status === 'success' || i < numDone) {
+            cls = 'done';
+        } else if (isRunning(status) && i === numDone) {
+            cls = 'run';
+        }
+        return { key: p.key, label: p.label, cls: cls };
+    });
+}
+
+// ==================== Tema de Chart.js ====================
+
+function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// Color hex (#rrggbb) con transparencia -> #rrggbbaa
+function alpha(hex, a) {
+    var h = Math.round(a * 255).toString(16);
+    return hex + (h.length === 1 ? '0' + h : h);
+}
+
+function applyChartTheme() {
+    if (typeof Chart === 'undefined') return;
+    Chart.defaults.color = cssVar('--dim');
+    Chart.defaults.borderColor = cssVar('--line');
+    Chart.defaults.font.family = cssVar('--sans');
+    Chart.defaults.font.size = 12;
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.plugins.tooltip.backgroundColor = cssVar('--panel2');
+    Chart.defaults.plugins.tooltip.borderColor = cssVar('--line');
+    Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.plugins.tooltip.titleColor = cssVar('--text');
+    Chart.defaults.plugins.tooltip.bodyColor = cssVar('--text');
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.titleFont = { family: cssVar('--mono'), size: 12 };
+}
+
+// ==================== Toasts ====================
+
+var TOAST_ICONS = {
+    success: '<svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    error:   '<svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>',
+    info:    '<svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+};
+
+function showToast(message, type) {
+    type = TOAST_ICONS[type] ? type : 'info';
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.setAttribute('role', 'status');
+
+    // Icono (SVG estático de confianza, no controlado por el usuario)
+    var iconWrapper = document.createElement('div');
+    iconWrapper.innerHTML = TOAST_ICONS[type];
     toast.appendChild(iconWrapper.firstElementChild);
 
-    // Message: use textContent to prevent XSS injection
-    const msgSpan = document.createElement('span');
-    msgSpan.className = 'flex-1';
+    // Mensaje: textContent para evitar XSS
+    var msgSpan = document.createElement('span');
+    msgSpan.className = 'msg';
     msgSpan.textContent = message;
     toast.appendChild(msgSpan);
 
-    // Close button (static markup, not influenced by user data)
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'text-white hover:text-gray-200';
-    closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.innerHTML = `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-            </svg>`;
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'x';
+    closeBtn.setAttribute('aria-label', 'Cerrar');
+    closeBtn.textContent = '×';
     closeBtn.addEventListener('click', function() { toast.remove(); });
     toast.appendChild(closeBtn);
-    
+
     container.appendChild(toast);
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(400px)';
-        setTimeout(() => toast.remove(), 300);
+
+    setTimeout(function() {
+        toast.classList.add('out');
+        setTimeout(function() { toast.remove(); }, 300);
     }, 5000);
 }
 
-// Format bytes to human readable
-function formatBytes(bytes, decimals = 2) {
+// ==================== Formatters ====================
+
+function formatBytes(bytes, decimals) {
+    if (decimals === undefined) decimals = 2;
     if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+    var k = 1024;
+    var dm = decimals < 0 ? 0 : decimals;
+    var sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-// Format duration from seconds
 function formatDuration(seconds) {
-    if (!seconds || seconds < 0) return 'N/A';
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    if (hours > 0) {
-        return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-        return `${minutes}m ${secs}s`;
-    } else {
-        return `${secs}s`;
-    }
+    if (seconds === null || seconds === undefined || seconds < 0) return 'N/A';
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    var secs = Math.floor(seconds % 60);
+    if (hours > 0) return hours + 'h ' + minutes + 'm ' + secs + 's';
+    if (minutes > 0) return minutes + 'm ' + secs + 's';
+    return secs + 's';
 }
 
-// Copy to clipboard
+// ==================== Clipboard ====================
+
 function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-            showToast('Copied to clipboard!', 'success');
-        }).catch(err => {
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('Copiado al portapapeles', 'success');
+        }).catch(function(err) {
             console.error('Failed to copy:', err);
-            showToast('Failed to copy to clipboard', 'error');
+            showToast('No se pudo copiar al portapapeles', 'error');
         });
     } else {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
+        var textArea = document.createElement('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
         textArea.style.left = '-999999px';
         document.body.appendChild(textArea);
         textArea.select();
-        
         try {
             document.execCommand('copy');
-            showToast('Copied to clipboard!', 'success');
+            showToast('Copiado al portapapeles', 'success');
         } catch (err) {
             console.error('Failed to copy:', err);
-            showToast('Failed to copy to clipboard', 'error');
+            showToast('No se pudo copiar al portapapeles', 'error');
         }
-        
         document.body.removeChild(textArea);
     }
 }
 
-// Auto-refresh functionality
-let autoRefreshInterval = null;
+// ==================== Auto-refresh ====================
 
-function startAutoRefresh(callback, intervalSeconds = 30) {
-    if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
-    }
-    
-    autoRefreshInterval = setInterval(() => {
-        console.log('Auto-refreshing...');
-        callback();
-    }, intervalSeconds * 1000);
-    
-    showToast(`Auto-refresh enabled (every ${intervalSeconds}s)`, 'info');
+var autoRefreshInterval = null;
+
+function startAutoRefresh(callback, intervalSeconds) {
+    intervalSeconds = intervalSeconds || 30;
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    autoRefreshInterval = setInterval(function() { callback(); }, intervalSeconds * 1000);
+    showToast('Auto-refresh activado (cada ' + intervalSeconds + 's)', 'info');
 }
 
 function stopAutoRefresh() {
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
-        showToast('Auto-refresh disabled', 'info');
+        showToast('Auto-refresh desactivado', 'info');
     }
 }
 
-// Export functions to window
+// ==================== Shell (layout global) ====================
+
+function appShell() {
+    return {
+        navOpen: false,
+        autoRefresh: false,
+        service: { status: 'unknown', running: false },
+
+        init: function() {
+            var self = this;
+            this.checkService();
+            setInterval(function() { self.checkService(); }, 60000);
+        },
+
+        checkService: function() {
+            var self = this;
+            fetch('/api/pipeline/status')
+                .then(function(r) { return r.json(); })
+                .then(function(d) { self.service = d; })
+                .catch(function() { self.service = { status: 'unknown', running: false }; });
+        },
+
+        serviceDot: function() {
+            if (this.service.running) return 'ok';
+            if (this.service.status === 'failed') return 'err';
+            if (this.service.status === 'inactive') return 'warn';
+            return '';
+        },
+
+        toggleAutoRefresh: function() {
+            this.autoRefresh = !this.autoRefresh;
+            if (this.autoRefresh) {
+                startAutoRefresh(window.pageRefreshCallback || function() { location.reload(); }, 30);
+            } else {
+                stopAutoRefresh();
+            }
+        }
+    };
+}
+
+// Export
+window.isRunning = isRunning;
+window.statusClass = statusClass;
+window.gateClass = gateClass;
+window.phaseSegs = phaseSegs;
+window.cssVar = cssVar;
+window.alpha = alpha;
+window.applyChartTheme = applyChartTheme;
 window.showToast = showToast;
 window.formatBytes = formatBytes;
 window.formatDuration = formatDuration;
 window.copyToClipboard = copyToClipboard;
 window.startAutoRefresh = startAutoRefresh;
 window.stopAutoRefresh = stopAutoRefresh;
+window.appShell = appShell;
 
-// Global error handler for fetch requests
-window.addEventListener('unhandledrejection', event => {
+window.addEventListener('unhandledrejection', function(event) {
     console.error('Unhandled promise rejection:', event.reason);
-    showToast('An error occurred. Check console for details.', 'error');
+    showToast('Se produjo un error. Revisa la consola para más detalles.', 'error');
 });
-
-console.log('GALTTCMC CI/CD Web UI loaded successfully');

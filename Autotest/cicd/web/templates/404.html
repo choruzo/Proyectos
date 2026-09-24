@@ -1,22 +1,23 @@
-{% extends "base.html" %}
-
-{% block title %}404 - Page Not Found{% endblock %}
-
-{% block content %}
-<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full text-center">
-        <div class="text-9xl font-bold text-indigo-600 dark:text-indigo-400 mb-4">404</div>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-4">Page Not Found</h1>
-        <p class="text-gray-600 dark:text-gray-400 mb-8">
-            The page you're looking for doesn't exist or has been moved.
-        </p>
-        <a href="{{ url_for('index') }}" 
-           class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-            </svg>
-            Back to Dashboard
-        </a>
+{% from "_icons.html" import icon %}<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>404 · GALTTCMC CI/CD</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="center-page">
+    <div class="err-page">
+        <div class="prompt"><b>$</b> git checkout {{ request.path }}</div>
+        <div class="err-code warn" style="margin-top:.8rem">404</div>
+        <h1>Página no encontrada</h1>
+        <p>La ruta que buscas no existe o se ha movido.</p>
+        <div class="actions">
+            <a href="{{ url_for('index') }}" class="btn primario" style="text-decoration:none">{{ icon('arrow-left', 'ico-sm') }} Volver al dashboard</a>
+        </div>
     </div>
 </div>
-{% endblock %}
+</body>
+</html>

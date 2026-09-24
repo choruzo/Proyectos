@@ -1,229 +1,186 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
-{% block title %}Dashboard - GALTTCMC CI/CD Pipeline{% endblock %}
+{% block title %}Dashboard · GALTTCMC CI/CD{% endblock %}
+{% block crumb %}dashboard{% endblock %}
 
 {% block content %}
 <div x-data="dashboardData()">
-    <!-- Header -->
-    <div class="mb-8">
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
-        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Overview del pipeline CI/CD de GALTTCMC
-        </p>
+
+    <div class="page-head">
+        <div>
+            <div class="eyebrow">$ ./ci_cd.sh status</div>
+            <h1>Dashboard</h1>
+            <p>Estado del pipeline CI/CD de GALTTCMC · rama WORKING_G2G_DEVELOPMENT</p>
+        </div>
+        <button class="btn" @click="refreshAll()">{{ icon('refresh', 'ico-sm') }} Actualizar</button>
     </div>
-    
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <!-- Total Deployments -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
-                        </svg>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Total Deployments
-                            </dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="stats.total_deployments || '-'">
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
+
+    <!-- KPIs -->
+    <div class="grid grid-4 mb">
+        <a href="{{ url_for('pipeline_runs') }}" class="card link kpi" style="text-decoration:none;color:inherit">
+            <span class="kpi-label">{{ icon('layers', 'ico-sm') }} Total deployments</span>
+            <span class="kpi-value" x-text="stats.total_deployments ?? '–'"></span>
+            <span class="kpi-foot">histórico completo</span>
+        </a>
+        <div class="card kpi" style="animation-delay:.04s">
+            <span class="kpi-label">{{ icon('percent', 'ico-sm') }} Tasa de éxito</span>
+            <span class="kpi-value" :class="rateClass()">
+                <span x-text="stats.success_rate !== undefined ? stats.success_rate : '–'"></span><span class="unit">%</span>
+            </span>
+            <div class="bar"><span :style="'width:' + (stats.success_rate || 0) + '%'"></span></div>
         </div>
-        
-        <!-- Success Rate -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Success Rate
-                            </dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900 dark:text-white">
-                                    <span x-text="stats.success_rate !== undefined ? stats.success_rate + '%' : '-'"></span>
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
+        <div class="card kpi" style="animation-delay:.08s">
+            <span class="kpi-label">{{ icon('clock', 'ico-sm') }} Últimas 24 h</span>
+            <span class="kpi-value" x-text="stats.last_24h ?? '0'"></span>
+            <span class="kpi-foot">ejecuciones iniciadas</span>
         </div>
-        
-        <!-- Last 24h -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Last 24 Hours
-                            </dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="stats.last_24h || '0'">
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Average Duration -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Avg Duration
-                            </dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900 dark:text-white" x-text="stats.avg_duration || '-'">
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
+        <div class="card kpi" style="animation-delay:.12s">
+            <span class="kpi-label">{{ icon('bolt', 'ico-sm') }} Duración media</span>
+            <span class="kpi-value" x-text="stats.avg_duration || '–'"></span>
+            <span class="kpi-foot">últimos runs exitosos</span>
         </div>
     </div>
-    
-    <!-- Charts Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <!-- Deployments Chart -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                Deployments (Last 7 Days)
-            </h3>
-            <canvas id="deploymentsChart" height="200"></canvas>
+
+    <!-- Último pipeline -->
+    <div class="card mb" :class="latest && latest.status === 'pending' ? 'halo' : ''" style="animation-delay:.14s">
+        <div class="card-head">
+            <h2>{{ icon('pipeline', 'ico-sm') }} Último pipeline</h2>
+            <template x-if="latest">
+                <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                    <span class="tag" x-text="latest.tag"></span>
+                    <span class="badge" :class="statusClass(latest.status)">
+                        <span class="spinner" x-show="isRunning(latest.status)"></span>
+                        <span x-text="latest.status"></span>
+                    </span>
+                    <span class="meta mono" x-text="latest.started_at"></span>
+                </div>
+            </template>
         </div>
-        
-        <!-- Currently Running -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                System Status
-            </h3>
-            <div class="space-y-4">
-                <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div class="flex items-center">
-                        <div class="h-3 w-3 rounded-full mr-3"
-                             :class="{
-                                 'bg-green-400 animate-pulse': pipelineStatus.running,
-                                 'bg-red-400': !pipelineStatus.running && pipelineStatus.status === 'failed',
-                                 'bg-yellow-400': !pipelineStatus.running && pipelineStatus.status === 'inactive',
-                                 'bg-gray-400 animate-pulse': pipelineStatus.status === 'unknown' || pipelineStatusLoading
-                             }"></div>
-                        <span class="text-gray-700 dark:text-gray-300 font-medium">Pipeline Status</span>
-                    </div>
-                    <span class="font-semibold"
-                          :class="{
-                              'text-green-600 dark:text-green-400': pipelineStatus.running,
-                              'text-red-600 dark:text-red-400': !pipelineStatus.running && pipelineStatus.status === 'failed',
-                              'text-yellow-600 dark:text-yellow-400': !pipelineStatus.running && pipelineStatus.status === 'inactive',
-                              'text-gray-500 dark:text-gray-400': pipelineStatus.status === 'unknown' || pipelineStatusLoading
-                          }"
-                          x-text="pipelineStatusLoading ? 'Checking...' : (pipelineStatus.status || 'unknown')"></span>
+        <div class="card-body">
+            <template x-if="!latest">
+                <div class="empty">{{ icon('pipeline', 'ico-lg') }}<span>Aún no hay ejecuciones del pipeline</span></div>
+            </template>
+            <template x-if="latest && !latestPhases">
+                <div class="empty"><span class="spinner lg"></span></div>
+            </template>
+            <template x-if="latest && latestPhases && latestPhases.phases">
+                <div class="pipeline">
+                    <template x-for="(phase, idx) in latestPhases.phases" :key="phase.key">
+                        <div class="stage">
+                            <div class="stage-row">
+                                <div class="link" :class="idx === 0 ? 'hidden' : (phase.status !== 'pending' ? 'done' : '')"></div>
+                                <div class="node" :class="phase.status" :title="phase.label + ' — ' + phase.status">
+                                    <template x-if="phase.status === 'completed'"><span>{{ icon('check', 'ico-sm') }}</span></template>
+                                    <template x-if="phase.status === 'failed'"><span>{{ icon('x', 'ico-sm') }}</span></template>
+                                    <template x-if="phase.status === 'active'"><span class="spinner"></span></template>
+                                    <template x-if="phase.status === 'pending'"><span x-text="idx + 1"></span></template>
+                                </div>
+                                <div class="link" :class="idx === latestPhases.phases.length - 1 ? 'hidden' : (latestPhases.phases[idx + 1].status !== 'pending' ? 'done' : '')"></div>
+                            </div>
+                            <div class="stage-name" :class="phase.status" x-text="phase.label"></div>
+                            <div class="stage-time" x-text="phase.duration || (phase.status === 'active' ? 'en curso…' : '—')"></div>
+                        </div>
+                    </template>
                 </div>
-                
-                <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div class="flex items-center">
-                        <svg class="h-5 w-5 text-indigo-600 dark:text-indigo-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
-                        </svg>
-                        <span class="text-gray-700 dark:text-gray-300 font-medium">Currently Running</span>
-                    </div>
-                    <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400" x-text="stats.currently_running || '0'"></span>
+            </template>
+            <template x-if="latest && latest.error_message">
+                <pre class="errbox" style="margin-top:1rem" x-text="latest.error_message"></pre>
+            </template>
+        </div>
+    </div>
+
+    <!-- Gráfico + estado -->
+    <div class="grid grid-3-1 mb">
+        <div class="card" style="animation-delay:.18s">
+            <div class="card-head">
+                <h2>{{ icon('chart', 'ico-sm') }} Deployments · últimos 7 días</h2>
+                <div class="legend">
+                    <span><i :style="'background:' + cssVar('--verde2')"></i>success</span>
+                    <span><i :style="'background:' + cssVar('--rojo')"></i>failed</span>
                 </div>
-                
-                <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div class="flex items-center">
-                        <svg class="h-5 w-5 text-gray-600 dark:text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
-                        </svg>
-                        <span class="text-gray-700 dark:text-gray-300 font-medium">Server</span>
-                    </div>
-                    <span class="text-gray-600 dark:text-gray-400">YOUR_PIPELINE_HOST_IP</span>
+            </div>
+            <div class="card-body">
+                <div class="chart-box" x-show="chartHasData"><canvas id="deploymentsChart"></canvas></div>
+                <div class="empty" x-show="!chartHasData" x-cloak style="height:240px;justify-content:center">
+                    {{ icon('chart', 'ico-lg') }}<span>Sin ejecuciones en los últimos 7 días</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="animation-delay:.22s">
+            <div class="card-head"><h2>{{ icon('server', 'ico-sm') }} Sistema</h2></div>
+            <div class="card-body status-list" style="padding-top:.35rem;padding-bottom:.35rem">
+                <div class="status-item">
+                    <span class="k">
+                        <span class="dot" :class="pipelineStatusLoading ? 'info' : serviceDot()"></span>
+                        Daemon cicd
+                    </span>
+                    <span class="badge"
+                          :class="pipelineStatusLoading ? 'b-dim' : (pipelineStatus.running ? 'b-pass' : (pipelineStatus.status === 'failed' ? 'b-fail' : (pipelineStatus.status === 'inactive' ? 'b-inc' : 'b-dim')))"
+                          x-text="pipelineStatusLoading ? 'comprobando…' : (pipelineStatus.status || 'unknown')"></span>
+                </div>
+                <div class="status-item">
+                    <span class="k">{{ icon('activity', 'ico-sm') }} En ejecución</span>
+                    <span class="v" :class="stats.currently_running > 0 ? 'v-info' : ''" x-text="stats.currently_running ?? 0"></span>
+                </div>
+                <div class="status-item">
+                    <span class="k">{{ icon('git', 'ico-sm') }} Polling Git</span>
+                    <span class="v">cada 5 min</span>
+                </div>
+                <div class="status-item">
+                    <span class="k">{{ icon('server', 'ico-sm') }} Servidor</span>
+                    <span class="v">172.30.188.137</span>
+                </div>
+                <div class="status-item">
+                    <span class="k">{{ icon('rocket', 'ico-sm') }} VM destino</span>
+                    <span class="v">172.30.188.147</span>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Recent Deployments Table -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-                Recent Deployments
-            </h3>
-            <a href="/pipeline-runs" class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium">
-                Ver todo &rarr;
+
+    <!-- Recientes -->
+    <div class="card" style="animation-delay:.26s">
+        <div class="card-head">
+            <h2>{{ icon('list', 'ico-sm') }} Deployments recientes</h2>
+            <a href="{{ url_for('pipeline_runs') }}" class="meta" style="display:inline-flex;align-items:center;gap:.35rem;color:var(--azul)">
+                Ver todo {{ icon('arrow-right', 'ico-sm') }}
             </a>
         </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tag</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Started</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Error</th>
-                    </tr>
+        <div class="table-wrap">
+            <table class="t">
+                <thead>
+                    <tr><th>Tag</th><th>Estado</th><th>Inicio</th><th>Duración</th><th>Error</th></tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    <template x-for="deployment in recentDeployments" :key="deployment.id">
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <a :href="'/pipeline-runs#' + deployment.id" 
-                                   class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium"
-                                   x-text="deployment.tag"></a>
+                <tbody>
+                    <template x-for="(d, i) in recentDeployments" :key="d.id">
+                        <tr :style="'animation-delay:' + (i * 0.03) + 's'">
+                            <td class="nowrap"><a class="tag" :href="'{{ url_for('pipeline_runs') }}#' + d.id" x-text="d.tag"></a></td>
+                            <td>
+                                <span class="badge" :class="statusClass(d.status)">
+                                    <span class="spinner" x-show="isRunning(d.status)"></span>
+                                    <span x-text="d.status"></span>
+                                </span>
+                                <div class="segs" :title="'Progreso por fase'">
+                                    <template x-for="s in phaseSegs(d.status)" :key="s.key"><i :class="s.cls" :title="s.label"></i></template>
+                                </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                      :class="{
-                                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200': deployment.status === 'success',
-                                          'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200': deployment.status === 'failed',
-                                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200': ['pending', 'compiling', 'analyzing', 'deploying'].includes(deployment.status)
-                                      }"
-                                      x-text="deployment.status"></span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.started_at"></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-text="deployment.duration"></td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                <span x-text="deployment.error_message ? deployment.error_message.substring(0, 50) + '...' : '-'"></span>
+                            <td class="dim mono nowrap" x-text="d.started_at"></td>
+                            <td class="mono nowrap" x-text="d.duration"></td>
+                            <td class="dim" style="max-width:340px">
+                                <span x-show="d.error_message" class="v-fail" style="font-weight:400;font-size:.85rem"
+                                      :title="d.error_message"
+                                      x-text="d.error_message && d.error_message.length > 60 ? d.error_message.substring(0, 60) + '…' : d.error_message"></span>
+                                <span x-show="!d.error_message">—</span>
                             </td>
                         </tr>
                     </template>
-                    <tr x-show="recentDeployments.length === 0">
-                        <td colspan="5" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                            No deployments found
-                        </td>
-                    </tr>
                 </tbody>
             </table>
+            <div class="empty" x-show="recentDeployments.length === 0" x-cloak>
+                {{ icon('layers', 'ico-lg') }}<span>No hay deployments registrados</span>
+            </div>
         </div>
     </div>
 </div>
@@ -235,21 +192,40 @@ function dashboardData() {
     return {
         stats: {},
         recentDeployments: [],
+        latest: null,
+        latestPhases: null,
         chart: null,
+        chartHasData: true,
         pipelineStatus: { status: 'unknown', running: false },
         pipelineStatusLoading: true,
-        
+
         async init() {
-            await this.loadStats();
-            await this.loadRecentDeployments();
-            await this.loadChartData();
-            await this.loadPipelineStatus();
-            window.pageRefreshCallback = async () => {
-                await this.loadStats();
-                await this.loadRecentDeployments();
-                await this.loadChartData();
-                await this.loadPipelineStatus();
-            };
+            await this.refreshAll();
+            window.pageRefreshCallback = () => this.refreshAll();
+        },
+
+        async refreshAll() {
+            await Promise.all([
+                this.loadStats(),
+                this.loadRecentDeployments(),
+                this.loadChartData(),
+                this.loadPipelineStatus()
+            ]);
+        },
+
+        rateClass() {
+            const r = this.stats.success_rate;
+            if (r === undefined || this.stats.total_deployments === 0) return '';
+            if (r >= 80) return 'v-ok';
+            if (r >= 50) return 'v-warn';
+            return 'v-fail';
+        },
+
+        serviceDot() {
+            if (this.pipelineStatus.running) return 'ok';
+            if (this.pipelineStatus.status === 'failed') return 'err';
+            if (this.pipelineStatus.status === 'inactive') return 'warn';
+            return '';
         },
 
         async loadPipelineStatus() {
@@ -264,8 +240,7 @@ function dashboardData() {
                 this.pipelineStatusLoading = false;
             }
         },
-        
-        
+
         async loadStats() {
             try {
                 const response = await fetch('/api/dashboard/stats');
@@ -274,25 +249,57 @@ function dashboardData() {
                 console.error('Error loading stats:', error);
             }
         },
-        
+
         async loadRecentDeployments() {
             try {
                 const response = await fetch('/api/dashboard/recent-deployments');
-                this.recentDeployments = await response.json();
+                const data = await response.json();
+                this.recentDeployments = Array.isArray(data) ? data : [];
+                const first = this.recentDeployments[0] || null;
+                const changed = !this.latest || !first || this.latest.id !== first.id || this.latest.status !== first.status;
+                this.latest = first;
+                if (first && changed) {
+                    this.latestPhases = null;
+                    await this.loadLatestPhases(first.id);
+                }
             } catch (error) {
                 console.error('Error loading recent deployments:', error);
             }
         },
-        
+
+        async loadLatestPhases(id) {
+            try {
+                const response = await fetch('/api/deployment/' + id + '/phases');
+                this.latestPhases = await response.json();
+            } catch (error) {
+                console.error('Error loading phases:', error);
+            }
+        },
+
         async loadChartData() {
             try {
                 const response = await fetch('/api/dashboard/chart-data');
                 const data = await response.json();
-                
+                if (!data.datasets) return;
+                this.chartHasData = data.labels && data.labels.length > 0;
+                if (!this.chartHasData) return;
+                await this.$nextTick();
+
+                // Colores del sistema de diseño (ignora los que envía el backend)
+                const palette = { 'Success': cssVar('--verde2'), 'Failed': cssVar('--rojo') };
+                data.datasets.forEach(ds => {
+                    const c = palette[ds.label] || cssVar('--azul');
+                    ds.label = ds.label.toLowerCase();
+                    ds.backgroundColor = alpha(c, 0.85);
+                    ds.hoverBackgroundColor = c;
+                    ds.borderColor = c;
+                    ds.borderWidth = 0;
+                    ds.borderRadius = 4;
+                    ds.maxBarThickness = 28;
+                });
+
                 const ctx = document.getElementById('deploymentsChart').getContext('2d');
-                if (this.chart) {
-                    this.chart.destroy();
-                }
+                if (this.chart) this.chart.destroy();
                 this.chart = new Chart(ctx, {
                     type: 'bar',
                     data: data,
@@ -300,18 +307,10 @@ function dashboardData() {
                         responsive: true,
                         maintainAspectRatio: false,
                         scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    precision: 0
-                                }
-                            }
+                            x: { stacked: true, grid: { display: false }, ticks: { font: { family: cssVar('--mono'), size: 11 } } },
+                            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: alpha(cssVar('--line'), 0.6) } }
                         },
-                        plugins: {
-                            legend: {
-                                position: 'top',
-                            }
-                        }
+                        plugins: { legend: { display: false } }
                     }
                 });
             } catch (error) {

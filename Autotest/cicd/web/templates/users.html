@@ -1,294 +1,137 @@
 {% extends 'base.html' %}
-{% block title %}Gestión de Usuarios — GALTTCMC CI/CD{% endblock %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Usuarios · GALTTCMC CI/CD{% endblock %}
+{% block crumb %}users{% endblock %}
 
 {% block content %}
-<div x-data="usersPage()">
+<div x-data="usersPage()" @keydown.escape.window="showCreateModal = false; showPasswordModal = false">
 
-    <!-- Page header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="page-head">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Gestión de Usuarios</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Administra los accesos a la Web UI</p>
+            <div class="eyebrow">$ admin --users</div>
+            <h1>Usuarios</h1>
+            <p>Gestiona los accesos a la Web UI</p>
         </div>
-        <button @click="openCreateModal()"
-                class="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
-            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Nuevo usuario
-        </button>
+        <button class="btn primario" @click="openCreateModal()">{{ icon('plus', 'ico-sm') }} Nuevo usuario</button>
     </div>
 
-    <!-- Page-level error -->
-    <div x-show="pageError" x-cloak
-         class="mb-4 px-4 py-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-center space-x-2">
-        <svg class="h-5 w-5 text-red-500 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        <p class="text-sm text-red-700 dark:text-red-400" x-text="pageError"></p>
+    <div class="notice err mb" x-show="pageError" x-cloak>
+        {{ icon('alert') }}<span x-text="pageError"></span>
     </div>
 
-    <!-- Users table card -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+    <div class="card">
+        <div x-show="loading" class="empty"><span class="spinner lg"></span><span>Cargando usuarios…</span></div>
 
-        <!-- Loading spinner -->
-        <div x-show="loading" class="p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
-            <svg class="animate-spin h-8 w-8 mb-3" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-            </svg>
-            Cargando usuarios...
+        <div x-show="!loading && users.length === 0" x-cloak class="empty">
+            {{ icon('users', 'ico-lg') }}
+            <span>No hay usuarios registrados</span>
+            <button class="btn mini pass" @click="openCreateModal()">Crear el primer usuario</button>
         </div>
 
-        <!-- Empty state -->
-        <div x-show="!loading && users.length === 0" x-cloak
-             class="p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
-            <svg class="h-12 w-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <p class="mb-2">No hay usuarios registrados.</p>
-            <button @click="openCreateModal()"
-                    class="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">
-                Crear el primer usuario
-            </button>
-        </div>
-
-        <!-- Table -->
-        <table x-show="!loading && users.length > 0" x-cloak class="w-full text-sm">
-            <thead class="bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                <tr>
-                    <th class="px-6 py-3 text-left">Usuario</th>
-                    <th class="px-6 py-3 text-left">Estado</th>
-                    <th class="px-6 py-3 text-left">Creado</th>
-                    <th class="px-6 py-3 text-left">Último login</th>
-                    <th class="px-6 py-3 text-right">Acciones</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                <template x-for="user in users" :key="user.username">
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-
-                        <!-- Username + avatar -->
-                        <td class="px-6 py-4">
-                            <div class="flex items-center space-x-3">
-                                <div class="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center flex-shrink-0">
-                                    <span class="text-indigo-600 dark:text-indigo-300 font-semibold text-sm"
-                                          x-text="user.username.charAt(0).toUpperCase()"></span>
+        <div class="table-wrap" x-show="!loading && users.length > 0" x-cloak>
+            <table class="t">
+                <thead>
+                    <tr><th>Usuario</th><th>Estado</th><th>Creado</th><th>Último login</th><th class="r">Acciones</th></tr>
+                </thead>
+                <tbody>
+                    <template x-for="(user, i) in users" :key="user.username">
+                        <tr :style="'animation-delay:' + (i * 0.03) + 's'">
+                            <td>
+                                <div style="display:flex;align-items:center;gap:.6rem">
+                                    <span class="avatar" x-text="user.username.charAt(0).toUpperCase()"></span>
+                                    <span style="font-weight:600" x-text="user.username"></span>
+                                    <span x-show="user.username === currentUser" class="badge b-info">tú</span>
                                 </div>
-                                <div>
-                                    <span class="font-medium text-gray-900 dark:text-white" x-text="user.username"></span>
-                                    <span x-show="user.username === currentUser"
-                                          class="ml-1.5 text-xs text-gray-400 dark:text-gray-500">(tú)</span>
-                                </div>
-                            </div>
-                        </td>
-
-                        <!-- Status badge -->
-                        <td class="px-6 py-4">
-                            <span :class="user.is_active
-                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                                    : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
-                                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                                  x-text="user.is_active ? 'Activo' : 'Inactivo'">
-                            </span>
-                        </td>
-
-                        <!-- Dates -->
-                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400 whitespace-nowrap"
-                            x-text="user.created_at || '—'"></td>
-                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400 whitespace-nowrap"
-                            x-text="user.last_login || 'Nunca'"></td>
-
-                        <!-- Actions -->
-                        <td class="px-6 py-4">
-                            <div class="flex items-center justify-end space-x-1">
-
-                                <!-- Toggle active/inactive -->
-                                <button @click="toggleUser(user)"
+                            </td>
+                            <td>
+                                <span class="badge" :class="user.is_active ? 'b-pass' : 'b-dim'" x-text="user.is_active ? 'activo' : 'inactivo'"></span>
+                            </td>
+                            <td class="dim mono nowrap" x-text="user.created_at || '—'"></td>
+                            <td class="dim mono nowrap" x-text="user.last_login || 'nunca'"></td>
+                            <td class="r nowrap">
+                                <button class="btn-icon" :class="user.is_active ? 'danger' : 'ok'"
+                                        @click="toggleUser(user)"
                                         :disabled="user.username === currentUser || toggling === user.username"
-                                        :title="user.username === currentUser
-                                            ? 'No puedes desactivar tu propio usuario'
-                                            : (user.is_active ? 'Desactivar usuario' : 'Activar usuario')"
-                                        :class="user.username === currentUser
-                                            ? 'opacity-40 cursor-not-allowed'
-                                            : 'hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'"
-                                        class="p-1.5 rounded transition-colors">
-                                    <svg x-show="user.is_active"
-                                         class="h-4 w-4 text-red-400 hover:text-red-600"
-                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                                    </svg>
-                                    <svg x-show="!user.is_active"
-                                         class="h-4 w-4 text-green-500"
-                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
+                                        :title="user.username === currentUser ? 'No puedes desactivar tu propio usuario' : (user.is_active ? 'Desactivar usuario' : 'Activar usuario')"
+                                        :aria-label="user.is_active ? 'Desactivar usuario' : 'Activar usuario'">
+                                    <span x-show="toggling === user.username" class="spinner"></span>
+                                    <span x-show="toggling !== user.username && user.is_active">{{ icon('ban', 'ico-sm') }}</span>
+                                    <span x-show="toggling !== user.username && !user.is_active">{{ icon('check-circle', 'ico-sm') }}</span>
                                 </button>
-
-                                <!-- Change password -->
-                                <button @click="openPasswordModal(user)"
-                                        title="Cambiar contraseña"
-                                        class="p-1.5 rounded transition-colors text-gray-400
-                                               hover:text-gray-600 dark:hover:text-gray-200
-                                               hover:bg-gray-100 dark:hover:bg-gray-600">
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                                    </svg>
+                                <button class="btn-icon" @click="openPasswordModal(user)" title="Cambiar contraseña" aria-label="Cambiar contraseña">
+                                    {{ icon('key', 'ico-sm') }}
                                 </button>
-
-                            </div>
-                        </td>
-                    </tr>
-                </template>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- ==================== CREATE USER MODAL ==================== -->
-    <div x-show="showCreateModal" x-cloak
-         class="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style="background: rgba(0,0,0,0.5);"
-         @click.self="showCreateModal = false"
-         @keydown.escape.window="showCreateModal = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md">
-
-            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Nuevo usuario</h3>
-                <button @click="showCreateModal = false"
-                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
-            </div>
-
-            <div class="px-6 py-5 space-y-4">
-                <div x-show="modalError" x-cloak
-                     class="px-3 py-2.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400"
-                     x-text="modalError"></div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Usuario</label>
-                    <input type="text" x-model="createForm.username"
-                           @keydown.enter="createUser()"
-                           maxlength="64" autocomplete="off" placeholder="ej. juan.garcia"
-                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400
-                                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                        Contraseña <span class="font-normal text-gray-400">(mín. 8 caracteres)</span>
-                    </label>
-                    <input type="password" x-model="createForm.password"
-                           @keydown.enter="createUser()"
-                           autocomplete="new-password"
-                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirmar contraseña</label>
-                    <input type="password" x-model="createForm.confirm"
-                           @keydown.enter="createUser()"
-                           autocomplete="new-password"
-                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
-                </div>
-            </div>
-
-            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 rounded-b-xl flex justify-end space-x-3">
-                <button @click="showCreateModal = false"
-                        class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200
-                               bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500
-                               rounded-lg hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors">
-                    Cancelar
-                </button>
-                <button @click="createUser()" :disabled="creating"
-                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700
-                               rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span x-show="!creating">Crear usuario</span>
-                    <span x-show="creating">Creando...</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ==================== CHANGE PASSWORD MODAL ==================== -->
-    <div x-show="showPasswordModal" x-cloak
-         class="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style="background: rgba(0,0,0,0.5);"
-         @click.self="showPasswordModal = false"
-         @keydown.escape.window="showPasswordModal = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md">
-
-            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                    Cambiar contraseña
-                    <template x-if="selectedUser">
-                        <span> — <span class="text-indigo-600 dark:text-indigo-400" x-text="selectedUser.username"></span></span>
+                            </td>
+                        </tr>
                     </template>
-                </h3>
-                <button @click="showPasswordModal = false"
-                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Crear usuario -->
+    <div class="overlay" x-show="showCreateModal" x-cloak @click.self="showCreateModal = false">
+        <div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="create-title">
+            <div class="modal-head">
+                <h3 id="create-title">{{ icon('plus', 'ico-sm') }} Nuevo usuario</h3>
+                <button class="btn-icon" @click="showCreateModal = false" aria-label="Cerrar">{{ icon('x') }}</button>
             </div>
-
-            <div class="px-6 py-5 space-y-4">
-                <div x-show="modalError" x-cloak
-                     class="px-3 py-2.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400"
-                     x-text="modalError"></div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                        Nueva contraseña <span class="font-normal text-gray-400">(mín. 8 caracteres)</span>
-                    </label>
-                    <input type="password" x-model="passwordForm.password"
-                           @keydown.enter="changePassword()"
-                           autocomplete="new-password"
-                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
+            <div class="modal-body stack">
+                <div class="notice err" x-show="modalError" x-cloak>{{ icon('alert', 'ico-sm') }}<span x-text="modalError"></span></div>
+                <div class="field">
+                    <label for="cu-name">Usuario</label>
+                    <input id="cu-name" class="input" type="text" x-model="createForm.username" @keydown.enter="createUser()"
+                           maxlength="64" autocomplete="off" placeholder="ej. juan.garcia">
                 </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirmar contraseña</label>
-                    <input type="password" x-model="passwordForm.confirm"
-                           @keydown.enter="changePassword()"
-                           autocomplete="new-password"
-                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
+                <div class="field">
+                    <label for="cu-pass">Contraseña <span class="hint">(mín. 8 caracteres)</span></label>
+                    <input id="cu-pass" class="input" type="password" x-model="createForm.password" @keydown.enter="createUser()" autocomplete="new-password">
+                </div>
+                <div class="field">
+                    <label for="cu-conf">Confirmar contraseña</label>
+                    <input id="cu-conf" class="input" type="password" x-model="createForm.confirm" @keydown.enter="createUser()" autocomplete="new-password">
                 </div>
             </div>
-
-            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 rounded-b-xl flex justify-end space-x-3">
-                <button @click="showPasswordModal = false"
-                        class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200
-                               bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500
-                               rounded-lg hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors">
-                    Cancelar
-                </button>
-                <button @click="changePassword()" :disabled="changingPassword"
-                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700
-                               rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span x-show="!changingPassword">Cambiar</span>
-                    <span x-show="changingPassword">Guardando...</span>
+            <div class="modal-foot">
+                <button class="btn" @click="showCreateModal = false">Cancelar</button>
+                <button class="btn primario" @click="createUser()" :disabled="creating">
+                    <span x-show="creating" class="spinner"></span>
+                    <span x-text="creating ? 'Creando…' : 'Crear usuario'"></span>
                 </button>
             </div>
         </div>
     </div>
 
+    <!-- Cambiar contraseña -->
+    <div class="overlay" x-show="showPasswordModal" x-cloak @click.self="showPasswordModal = false">
+        <div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+            <div class="modal-head">
+                <h3 id="pw-title">{{ icon('key', 'ico-sm') }} Cambiar contraseña
+                    <template x-if="selectedUser"><span class="tag" x-text="selectedUser.username"></span></template>
+                </h3>
+                <button class="btn-icon" @click="showPasswordModal = false" aria-label="Cerrar">{{ icon('x') }}</button>
+            </div>
+            <div class="modal-body stack">
+                <div class="notice err" x-show="modalError" x-cloak>{{ icon('alert', 'ico-sm') }}<span x-text="modalError"></span></div>
+                <div class="field">
+                    <label for="pw-new">Nueva contraseña <span class="hint">(mín. 8 caracteres)</span></label>
+                    <input id="pw-new" class="input" type="password" x-model="passwordForm.password" @keydown.enter="changePassword()" autocomplete="new-password">
+                </div>
+                <div class="field">
+                    <label for="pw-conf">Confirmar contraseña</label>
+                    <input id="pw-conf" class="input" type="password" x-model="passwordForm.confirm" @keydown.enter="changePassword()" autocomplete="new-password">
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn" @click="showPasswordModal = false">Cancelar</button>
+                <button class="btn primario" @click="changePassword()" :disabled="changingPassword">
+                    <span x-show="changingPassword" class="spinner"></span>
+                    <span x-text="changingPassword ? 'Guardando…' : 'Cambiar'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -314,6 +157,7 @@ function usersPage() {
             var meta = document.querySelector('meta[name="current-user"]');
             this.currentUser = meta ? meta.getAttribute('content') : '';
             this.loadUsers();
+            window.pageRefreshCallback = this.loadUsers.bind(this);
         },
 
         csrfToken: function() {
@@ -322,7 +166,6 @@ function usersPage() {
         },
 
         loadUsers: function() {
-            this.loading = true;
             this.pageError = '';
             var self = this;
             fetch('/api/users')
@@ -342,6 +185,7 @@ function usersPage() {
             this.modalError = '';
             this.creating = false;
             this.showCreateModal = true;
+            this.$nextTick(function() { var el = document.getElementById('cu-name'); if (el) el.focus(); });
         },
 
         openPasswordModal: function(user) {
@@ -350,6 +194,7 @@ function usersPage() {
             this.modalError = '';
             this.changingPassword = false;
             this.showPasswordModal = true;
+            this.$nextTick(function() { var el = document.getElementById('pw-new'); if (el) el.focus(); });
         },
 
         createUser: function() {
@@ -362,11 +207,11 @@ function usersPage() {
                 return;
             }
             if (password.length < 8) {
-                this.modalError = 'La contrasena debe tener al menos 8 caracteres.';
+                this.modalError = 'La contraseña debe tener al menos 8 caracteres.';
                 return;
             }
             if (password !== confirm) {
-                this.modalError = 'Las contrasenas no coinciden.';
+                this.modalError = 'Las contraseñas no coinciden.';
                 return;
             }
             this.creating = true;
@@ -428,11 +273,11 @@ function usersPage() {
             var password = this.passwordForm.password;
             var confirm  = this.passwordForm.confirm;
             if (password.length < 8) {
-                this.modalError = 'La contrasena debe tener al menos 8 caracteres.';
+                this.modalError = 'La contraseña debe tener al menos 8 caracteres.';
                 return;
             }
             if (password !== confirm) {
-                this.modalError = 'Las contrasenas no coinciden.';
+                this.modalError = 'Las contraseñas no coinciden.';
                 return;
             }
             this.changingPassword = true;
@@ -449,11 +294,11 @@ function usersPage() {
             .then(function(res) {
                 self.changingPassword = false;
                 if (!res.ok) {
-                    self.modalError = res.data.error || 'Error cambiando contrasena.';
+                    self.modalError = res.data.error || 'Error cambiando contraseña.';
                     return;
                 }
                 self.showPasswordModal = false;
-                showToast('Contrasena de "' + self.selectedUser.username + '" actualizada.', 'success');
+                showToast('Contraseña de "' + self.selectedUser.username + '" actualizada.', 'success');
             })
             .catch(function(e) {
                 self.changingPassword = false;

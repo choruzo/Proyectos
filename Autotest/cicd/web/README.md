@@ -24,7 +24,7 @@ Interfaz web moderna para monitorear y visualizar el pipeline CI/CD de GALTTCMC.
 ### Instalación Automática
 
 ```bash
-cd /home/YOUR_USER/cicd
+cd /home/agent/cicd
 sudo ./install_web.sh install
 ```
 
@@ -38,7 +38,7 @@ Este script:
 ### Instalación Manual
 
 ```bash
-cd /home/YOUR_USER/cicd/web
+cd /home/agent/cicd/web
 
 # Instalar dependencias
 python3.6 -m pip install -r requirements.txt
@@ -55,7 +55,7 @@ gunicorn --bind 0.0.0.0:8080 --workers 2 app:app
 Después de la instalación, accede a la Web UI en:
 
 ```
-http://YOUR_PIPELINE_HOST_IP:8080
+http://172.30.188.137:8080
 ```
 
 O desde cualquier navegador en la red:
@@ -85,8 +85,8 @@ sudo systemctl restart cicd-web
 sudo journalctl -u cicd-web -f
 
 # Ver logs de aplicación
-tail -f /home/YOUR_USER/cicd/logs/web_access.log
-tail -f /home/YOUR_USER/cicd/logs/web_error.log
+tail -f /home/agent/cicd/logs/web_access.log
+tail -f /home/agent/cicd/logs/web_error.log
 ```
 
 ### Navegación
@@ -163,7 +163,7 @@ La Web UI expone los siguientes endpoints REST:
 
 ### Variables de Entorno
 
-Configura en `/home/YOUR_USER/cicd/config/.env` o variables de entorno:
+Configura en `/home/agent/cicd/config/.env` o variables de entorno:
 
 ```bash
 # Web server
@@ -207,18 +207,18 @@ El servicio incluye configuraciones de seguridad:
 sudo journalctl -u cicd-web -n 100 --no-pager
 
 # Verificar permisos
-ls -la /home/YOUR_USER/cicd/web
-ls -la /home/YOUR_USER/cicd/db/pipeline.db
+ls -la /home/agent/cicd/web
+ls -la /home/agent/cicd/db/pipeline.db
 
 # Probar manualmente
-cd /home/YOUR_USER/cicd/web
+cd /home/agent/cicd/web
 python3.6 app.py
 ```
 
 ### No se ven datos
 
-1. Verifica que la base de datos existe: `ls -la /home/YOUR_USER/cicd/db/pipeline.db`
-2. Ejecuta el pipeline al menos una vez: `cd /home/YOUR_USER/cicd && ./ci_cd.sh --tag TEST_TAG`
+1. Verifica que la base de datos existe: `ls -la /home/agent/cicd/db/pipeline.db`
+2. Ejecuta el pipeline al menos una vez: `cd /home/agent/cicd && ./ci_cd.sh --tag TEST_TAG`
 3. Verifica permisos de lectura en la base de datos
 
 ### Error 500 al cargar logs
@@ -226,8 +226,8 @@ python3.6 app.py
 Verifica permisos en el directorio de logs:
 
 ```bash
-chmod 755 /home/YOUR_USER/cicd/logs
-chmod 644 /home/YOUR_USER/cicd/logs/*.log
+chmod 755 /home/agent/cicd/logs
+chmod 644 /home/agent/cicd/logs/*.log
 ```
 
 ### Puerto 8080 en uso
@@ -259,10 +259,10 @@ sudo ./install_web.sh reinstall
 
 ```bash
 # Logs de acceso HTTP
-tail -f /home/YOUR_USER/cicd/logs/web_access.log
+tail -f /home/agent/cicd/logs/web_access.log
 
 # Logs de errores
-tail -f /home/YOUR_USER/cicd/logs/web_error.log
+tail -f /home/agent/cicd/logs/web_error.log
 
 # Logs de systemd
 sudo journalctl -u cicd-web -f
