@@ -4,6 +4,10 @@ venv/
 ENV/
 env/
 
+# Python cache
+__pycache__/
+*.py[cod]
+
 # Ignore Claude and temporary RAG artifacts
 **/.claude/
 RAG/.claude/
