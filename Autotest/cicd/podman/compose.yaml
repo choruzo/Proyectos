@@ -1,0 +1,58 @@
+# =============================================================================
+# compose.yaml - Alternativa a run.sh (requiere podman-compose)
+# =============================================================================
+# La ruta recomendada para el PoC es ./run.sh, que no necesita podman-compose.
+#
+#   podman-compose -f compose.yaml up -d
+#   podman-compose -f compose.yaml logs -f
+#   podman-compose -f compose.yaml down
+#
+# Ajusta COMPILE_PATH al valor de git.compile_path de ci_cd_config.yaml.
+# =============================================================================
+
+services:
+  orchestrator:
+    image: localhost/cicd-orchestrator:local
+    container_name: cicd
+    network_mode: host
+    userns_mode: keep-id
+    restart: always
+    command: ["daemon"]
+    environment:
+      HOME: /home/agent
+      CICD_HOME: /home/agent/cicd
+      CICD_BUILD_MODE: ssh
+      CICD_BUILD_SSH: agent@127.0.0.1
+      CICD_BUILD_RUNNER: /home/agent/cicd-host/build_runner.sh
+      CICD_BUILD_WRAPPER: /home/agent/cicd-host/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64
+      CICD_SONAR_MODE: ssh
+      CICD_SONAR_SSH: agent@127.0.0.1
+      CICD_SONAR_RUNNER: /home/agent/cicd-host/sonar_runner.sh
+      CICD_WALL_ENABLED: "false"
+    volumes:
+      - /home/agent/cicd/config:/home/agent/cicd/config
+      - /home/agent/cicd/db:/home/agent/cicd/db
+      - /home/agent/cicd/logs:/home/agent/cicd/logs
+      - /home/agent/GALTTCMC:/home/agent/GALTTCMC
+      - /home/agent/V08.XX.XX.XX:/home/agent/V08.XX.XX.XX
+      - /home/agent/.ssh:/home/agent/.ssh:ro
+      - /etc/profile.d/informacion.sh:/etc/profile.d/informacion.sh
+
+  web:
+    image: localhost/cicd-web:local
+    container_name: cicd-web
+    network_mode: host
+    userns_mode: keep-id
+    restart: always
+    environment:
+      HOME: /home/agent
+      CICD_HOME: /home/agent/cicd
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8080"
+    # Descomenta si quieres que la Web reciba SECRET_KEY y credenciales:
+    # env_file:
+    #   - ../config/.env
+    volumes:
+      - /home/agent/cicd/config:/home/agent/cicd/config
+      - /home/agent/cicd/db:/home/agent/cicd/db
+      - /home/agent/cicd/logs:/home/agent/cicd/logs

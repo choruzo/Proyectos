@@ -45,3 +45,6 @@ Thumbs.db
 
 # ISOs generados (muy grandes)
 *.iso
+
+# Artefactos del PoC Podman (imagenes exportadas)
+podman/dist/

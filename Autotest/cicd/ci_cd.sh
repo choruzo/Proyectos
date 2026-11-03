@@ -560,7 +560,11 @@ run_pipeline() {
     log_info "Configurando permisos de ejecución..."
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner" 2>/dev/null || true
     chmod +x "$compile_path/utils/sonar-scanner-7.2.0.5079-linux-x64/jre/bin/java" 2>/dev/null || true
-    export JAVA_HOME=/usr/lib64/jvm/java-25-openjdk-25
+    if [[ -x /usr/lib64/jvm/java-25-openjdk-25/bin/java ]]; then
+        export JAVA_HOME=/usr/lib64/jvm/java-25-openjdk-25
+    elif [[ -x "$SCRIPT_DIR/utils/sonar-scanner-7.2.0.5079-linux-x64/jre/bin/java" ]]; then
+        export JAVA_HOME="$SCRIPT_DIR/utils/sonar-scanner-7.2.0.5079-linux-x64/jre"
+    fi
     log_ok "Permisos configurados"
 
     # Rutas locales en el directorio de compilación
@@ -641,8 +645,38 @@ run_pipeline() {
     log_info "Directorio de trabajo: $compile_path"
     log_info "Configuración: sonar-project.properties"
 
-    if ! "$JAVA_HOME/bin/java" -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name="$sonar_branch" -Dsonar.projectVersion="$sonar_branch" \
-        2>&1 | tee -a "$LOG_FILE"; then
+    local sonar_mode="${CICD_SONAR_MODE:-local}"
+    local sonar_rc=0
+
+    if [[ "$sonar_mode" == "ssh" ]]; then
+        # El análisis corre en el host SUSE: usa su Java (java-25) y su
+        # truststore corporativo. El árbol de compilación es compartido.
+        local ssh_target="${CICD_SONAR_SSH:-${CICD_BUILD_SSH:-agent@127.0.0.1}}"
+        local ssh_key="${CICD_SONAR_SSH_KEY:-${CICD_BUILD_SSH_KEY:-/home/agent/.ssh/id_rsa}}"
+        local sonar_runner="${CICD_SONAR_RUNNER:-/home/agent/cicd-host/sonar_runner.sh}"
+        local -a ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
+        if [[ -f "$ssh_key" ]]; then
+            ssh_opts+=(-i "$ssh_key")
+        fi
+
+        log_info "Análisis SonarQube delegado al host: $ssh_target"
+        log_info "Runner Sonar remoto: $sonar_runner"
+
+        set +e
+        ssh "${ssh_opts[@]}" "$ssh_target" \
+            "$sonar_runner '$compile_path' '$sonar_branch'" \
+            2>&1 | tee -a "$LOG_FILE"
+        sonar_rc=${PIPESTATUS[0]}
+        set -e
+    else
+        set +e
+        "$JAVA_HOME/bin/java" -jar /home/agent/cicd/utils/sonar-scanner-7.2.0.5079-linux-x64/lib/sonar-scanner-cli-7.2.0.5079.jar  -Dproject.settings=sonar-project.properties -Dsonar.projectKey=GALTTCMC_interno -Dsonar.projectName=GALTTCMC_interno -Dsonar.branch.name="$sonar_branch" -Dsonar.projectVersion="$sonar_branch" \
+            2>&1 | tee -a "$LOG_FILE"
+        sonar_rc=${PIPESTATUS[0]}
+        set -e
+    fi
+
+    if [[ $sonar_rc -ne 0 ]]; then
         log_error "sonar-scanner falló"
         cleanup_on_error "Error en análisis SonarQube" "sonarqube"
         return 1
@@ -1036,7 +1070,16 @@ run_daemon() {
     log_info "═══════════════════════════════════════════════════════════════════"
     
     # Loop infinito con manejo robusto de errores
+    local stop_requested=0
     while true; do
+        # Trap de parada en cada iteración: run_pipeline_isolated lo reemplaza
+        # y limpia, así que hay que reinstalarlo.
+        trap 'stop_requested=1' TERM INT
+
+        if [[ "$stop_requested" -eq 1 ]]; then
+            break
+        fi
+
         log_info "───────────────────────────────────────────────────────────"
         log_info "Verificando nuevos tags... ($(date '+%H:%M:%S'))"
 
@@ -1055,8 +1098,17 @@ run_daemon() {
         sync 2>/dev/null || true
 
         log_debug "Próxima verificación en ${polling_interval}s..."
-        sleep "$polling_interval"
+        # run_pipeline_isolated limpia los traps INT/TERM al terminar; se
+        # reinstala aquí para que el sleep también sea interrumpible.
+        trap 'stop_requested=1' TERM INT
+        # sleep en segundo plano + wait: así el trap de TERM se ejecuta
+        # enseguida (necesario cuando el script es PID 1 en un contenedor).
+        sleep "$polling_interval" &
+        wait $! 2>/dev/null || true
     done
+
+    trap - TERM INT
+    log_info "Daemon detenido por señal"
 }
 
 # Un ciclo del daemon. Se ejecuta con el lock del pipeline tomado.

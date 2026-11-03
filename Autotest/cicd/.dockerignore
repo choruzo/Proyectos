@@ -1,0 +1,12 @@
+# Contexto de build: cicd/
+# Excluye datos generados y credenciales para que la imagen sea reproducible.
+
+logs/
+db/*.db
+db/*.db-*
+config/.env
+**/__pycache__/
+**/*.pyc
+*.log
+podman/dist/
+.dockerignore

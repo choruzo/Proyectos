@@ -1,0 +1,58 @@
+# =============================================================================
+# Orquestador CI/CD (daemon + pipeline) para Podman
+# =============================================================================
+# La compilación real (build_DVDs.sh + build-wrapper) NO se ejecuta aquí:
+# se delega al host SUSE por SSH a 127.0.0.1. Ver podman/host/build_runner.sh.
+#
+# Build (contexto = cicd/):
+#   podman build --platform linux/amd64 \
+#     -f podman/Containerfile.orchestrator -t localhost/cicd-orchestrator:local .
+# =============================================================================
+
+ARG BASE_IMAGE=opensuse/leap:15.5
+FROM ${BASE_IMAGE}
+
+ARG AGENT_UID=1000
+ARG AGENT_GID=1000
+ARG YQ_VERSION=4.44.3
+
+# Dependencias de los scripts: git, sqlite3, yq, flock, timeout, ssh, zip...
+RUN zypper -n refresh && \
+    zypper -n install --no-recommends \
+        bash coreutils util-linux findutils gawk sed grep which hostname procps \
+        git sqlite3 python3 python3-pip python3-requests python3-PyYAML \
+        openssh-clients tar gzip unzip zip doxygen \
+        ca-certificates curl && \
+    (zypper -n install -y yq || \
+     (curl -fsSL -o /usr/local/bin/yq \
+        "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" && \
+      chmod +x /usr/local/bin/yq)) && \
+    zypper -n clean -a
+
+# Usuario no root alineado con el usuario 'agent' del host SUSE.
+RUN groupadd -g "${AGENT_GID}" agent 2>/dev/null || true && \
+    useradd -m -u "${AGENT_UID}" -g "${AGENT_GID}" -s /bin/bash agent 2>/dev/null || true
+
+# Código de la aplicación (baked en la imagen).
+COPY . /home/agent/cicd
+
+# Normaliza finales de línea por si el contexto viene de un checkout Windows.
+RUN find /home/agent/cicd -type f \( -name '*.sh' -o -name '*.py' \) \
+        -exec sed -i 's/\r$//' {} + && \
+    find /home/agent/cicd -type d -name __pycache__ -prune -exec rm -rf {} + && \
+    mkdir -p /home/agent/cicd/logs /home/agent/cicd/db && \
+    chmod +x /home/agent/cicd/ci_cd.sh /home/agent/cicd/scripts/*.sh && \
+    chown -R "${AGENT_UID}:${AGENT_GID}" /home/agent
+
+USER ${AGENT_UID}:${AGENT_GID}
+
+ENV HOME=/home/agent \
+    CICD_HOME=/home/agent/cicd \
+    PATH=/usr/local/bin:/usr/bin:/bin \
+    LANG=C.UTF-8
+
+WORKDIR /home/agent/cicd
+
+# Las credenciales se inyectan en runtime (config/.env montado), no en la imagen.
+ENTRYPOINT ["/home/agent/cicd/ci_cd.sh"]
+CMD ["daemon"]
