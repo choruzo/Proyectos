@@ -2,7 +2,7 @@
 
 ## Visión General
 
-**SSH Deploy** es la quinta y última fase del pipeline. Conecta por SSH a la VM objetivo, monta el ISO, copia el contenido y ejecuta el instalador.
+**SSH Deploy** es la quinta fase del pipeline; después, la fase 6 (`post_install`) verifica la instalación. Conecta por SSH a la VM objetivo, monta el ISO, copia el contenido y ejecuta el instalador.
 
 **Relacionado con**:
 - [[Pipeline - vCenter]] - Fase anterior (ISO ya montado en VM)

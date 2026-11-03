@@ -65,6 +65,17 @@ CREATE TABLE IF NOT EXISTS execution_log (
     timestamp TEXT DEFAULT (datetime('now'))
 );
 
+-- Resultados de la verificación post-instalación (Fase 6)
+CREATE TABLE IF NOT EXISTS post_install_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deployment_id INTEGER REFERENCES deployments(id),
+    tag TEXT NOT NULL,
+    passed INTEGER CHECK(passed IN (0, 1)),
+    checks_json TEXT,                    -- JSON: [{"name":..., "ok":..., "detail":...}]
+    error_message TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Registro de tags procesados (para evitar reprocesar)
 CREATE TABLE IF NOT EXISTS processed_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_deployments_tag ON deployments(tag_name);
 CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
 CREATE INDEX IF NOT EXISTS idx_deployments_started ON deployments(started_at);
 CREATE INDEX IF NOT EXISTS idx_sonar_tag ON sonar_results(tag);
+CREATE INDEX IF NOT EXISTS idx_post_install_deployment ON post_install_results(deployment_id);
 
 -- =============================================================================
 -- Usuarios de la Web UI (autenticacion)

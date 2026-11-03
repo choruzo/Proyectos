@@ -23,13 +23,16 @@ en local y se exportan como `.tar` para cargarlas en la máquina destino.
 
 | Componente | Dónde corre |
 |---|---|
-| `ci_cd.sh` (daemon), `git_monitor`, vCenter, `deploy.sh`, Quality Gate API | Contenedor orquestador |
+| `ci_cd.sh` (daemon), `git_monitor`, vCenter, `deploy.sh`, Quality Gate API, `post_install_check.py` | Contenedor orquestador |
 | Web UI (Flask + Gunicorn) | Contenedor web |
 | SQLite (`db/`), logs (`logs/`), `config/` | Bind-mount desde el host |
 | **`build_DVDs.sh` + build-wrapper** | **Host SUSE** (por SSH a `127.0.0.1`) |
 | **`sonar-scanner` (análisis)** | **Host SUSE** (por SSH a `127.0.0.1`) |
 | `wall` | Deshabilitado en contenedor (`CICD_WALL_ENABLED=false`) |
 | `/etc/profile.d/informacion.sh` | Bind-mount del fichero del host |
+
+Las dependencias Python del orquestador (`requests`, `PyYAML` y `pexpect` para
+la fase 6 `post_install`) van dentro de la imagen; no se instalan en el host.
 
 ## Ficheros
 

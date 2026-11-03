@@ -6,6 +6,7 @@ Interfaz web moderna para monitorear y visualizar el pipeline CI/CD de GALTTCMC.
 
 - **Dashboard en tiempo real**: Métricas del pipeline, tasa de éxito, despliegues recientes
 - **Historial de Pipeline Runs**: Vista completa de todas las ejecuciones con filtros
+- **Fase post-instalación**: resultado de las comprobaciones (servicios, bond, disco y arranque) en la vista de fases
 - **Visor de Logs**: Visualización de logs con búsqueda y filtrado en tiempo real
 - **Resultados SonarQube**: Análisis de calidad de código con gráficos de tendencias
 - **Modo oscuro**: Interfaz adaptable con soporte dark/light mode

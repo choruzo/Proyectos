@@ -2,7 +2,7 @@
 #===============================================================================
 # deploy.sh - Despliegue en VM destino vía SSH
 #===============================================================================
-# Fase 4 del pipeline CI/CD
+# Fase 5 del pipeline CI/CD (despliegue SSH)
 # Monta ISO, copia contenido y ejecuta instalación en la VM destino
 #
 # Uso:
@@ -32,7 +32,7 @@ DEPLOY_LOG_FILE="${LOG_DIR}/deploy_$(date +%Y%m%d_%H%M%S).log"
 # Configurar opciones SSH
 get_ssh_opts() {
     local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
-    echo "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i $ssh_key"
+    echo "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$CICD_KNOWN_HOSTS_FILE -o BatchMode=yes -o ConnectTimeout=10 -i $ssh_key"
 }
 
 # Ejecutar comando en VM destino

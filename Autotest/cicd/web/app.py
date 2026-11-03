@@ -6,6 +6,7 @@ Visualiza logs, deployments, metricas de SonarQube y estado del pipeline
 """
 
 from __future__ import print_function
+import json
 import os
 import sys
 import time
@@ -18,6 +19,7 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 import secrets
 import hmac
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 import yaml
 
 # Añadir path del proyecto para imports
@@ -25,6 +27,44 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = Flask(__name__)
 app.config.from_object('config')
+
+# La Web UI se publica detras de Nginx (portal) bajo un prefijo, p.ej. /cicd/,
+# y con TLS. Nginx reescribe la URI (quita el prefijo) y manda
+# X-Forwarded-Prefix / X-Forwarded-Proto / X-Forwarded-For. ProxyFix traduce
+# esas cabeceras a SCRIPT_NAME, wsgi.url_scheme y REMOTE_ADDR para que url_for()
+# y las redirecciones generen rutas correctas. Sin esas cabeceras (acceso
+# directo al :8080) el comportamiento es exactamente el de antes.
+class ForcedPrefix(object):
+    """Fija SCRIPT_NAME cuando Nginx no manda X-Forwarded-Prefix.
+
+    Solo actua si se define WEB_ROOT_PATH (web.service), y sirve de respaldo
+    para montar la app bajo un prefijo sin depender de que la cabecera
+    sobreviva al proxy inverso. Si la cabecera llega, ProxyFix ya se encarga.
+    """
+
+    def __init__(self, wsgi_app, prefix):
+        self.app = wsgi_app
+        self.prefix = prefix.rstrip('/')
+
+    def __call__(self, environ, start_response):
+        if not environ.get('HTTP_X_FORWARDED_PREFIX'):
+            path = environ.get('PATH_INFO') or '/'
+            environ['SCRIPT_NAME'] = self.prefix
+            if path.startswith(self.prefix + '/'):
+                environ['PATH_INFO'] = path[len(self.prefix):] or '/'
+        return self.app(environ, start_response)
+
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_prefix=1)
+_root_path = os.getenv('WEB_ROOT_PATH', '').strip()
+if _root_path:
+    app.wsgi_app = ForcedPrefix(app.wsgi_app, _root_path)
+
+
+def app_root():
+    """Prefijo de montaje (SCRIPT_NAME). Vacío en acceso directo."""
+    return request.root_path.rstrip('/')
+
 
 # Rutas de configuracion
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,6 +83,7 @@ PIPELINE_PHASES = [
     ('checksums',  'Checksums y Doxygen'),
     ('vcenter',    'vCenter'),
     ('ssh_deploy', 'Instalación SSH'),
+    ('post_install', 'Verificación post-instalación'),
 ]
 PHASE_KEYS = [p[0] for p in PIPELINE_PHASES]
 
@@ -174,6 +215,20 @@ def ensure_schema():
         conn.execute(
             'CREATE INDEX IF NOT EXISTS idx_web_login_attempts_time ON web_login_attempts(attempted_at)')
 
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS post_install_results (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   deployment_id INTEGER REFERENCES deployments(id),
+                   tag TEXT NOT NULL,
+                   passed INTEGER CHECK(passed IN (0, 1)),
+                   checks_json TEXT,
+                   error_message TEXT,
+                   created_at TEXT DEFAULT (datetime('now'))
+               )""")
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_post_install_deployment '
+            'ON post_install_results(deployment_id)')
+
         if 'deployments' in tables:
             _add_column(conn, 'deployments', 'current_phase', 'TEXT')
             _add_column(conn, 'deployments', 'failed_phase', 'TEXT')
@@ -219,7 +274,9 @@ def _end_session(reason):
     session.clear()
     if request.path.startswith('/api/'):
         return jsonify({'error': reason}), 401
-    return redirect(url_for('login', next=request.path))
+    # next lleva el prefijo de montaje: Nginx reescribe la URI y Flask solo
+    # ve la ruta relativa, así que sin app_root() el retorno caería fuera de /cicd/.
+    return redirect(url_for('login', next=app_root() + request.path))
 
 
 @app.before_request
@@ -377,10 +434,14 @@ def login():
                             session['username'] = username
                             session['login_at'] = time.time()
                             session['pwd_stamp'] = user['password_changed_at'] or ''
-                            next_url = request.args.get('next', '/')
+                            next_url = request.args.get('next', '')
+                            root = app_root()
                             # Evitar open redirect: solo permitir rutas relativas del mismo origen
                             if not next_url.startswith('/') or next_url.startswith('//'):
-                                next_url = '/'
+                                next_url = url_for('index')
+                            elif root and next_url != root and not next_url.startswith(root + '/'):
+                                # next sin prefijo (marcador o enlace interno antiguo)
+                                next_url = root + next_url
                             return redirect(next_url)
                         register_login_failure(conn, username, ip)
                         app.logger.warning('Login fallido: usuario=%s ip=%s', username, ip)
@@ -513,6 +574,26 @@ def sonar_rows_for_deployment(conn, deployment):
            ORDER BY created_at DESC, id DESC""",
         (deployment['id'], deployment['tag_name'])
     ).fetchall()
+
+
+def post_install_details(row):
+    """Comprobaciones de la Fase 6 guardadas como JSON (lista nombre/ok/detalle)."""
+    try:
+        checks = json.loads(row['checks_json'] or '[]')
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(checks, list):
+        return []
+    details = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        details.append({
+            'name': str(check.get('name', '')),
+            'value': str(check.get('detail') or ''),
+            'ok': bool(check.get('ok')),
+        })
+    return details
 
 
 # ==================== API ENDPOINTS ====================
@@ -1075,6 +1156,16 @@ def api_deployment_phases(deployment_id):
         sonar = sonar_rows_for_deployment(conn, deployment)
         sonar = sonar[0] if sonar else None
 
+        # Resultado de la verificación post-instalación (Fase 6)
+        try:
+            post_install = conn.execute(
+                """SELECT * FROM post_install_results
+                   WHERE deployment_id = ? OR (deployment_id IS NULL AND tag = ?)
+                   ORDER BY id DESC LIMIT 1""",
+                (deployment_id, deployment['tag_name'])).fetchone()
+        except sqlite3.OperationalError:
+            post_install = None
+
         conn.close()
 
         current, failed = resolve_phases(deployment)
@@ -1129,6 +1220,8 @@ def api_deployment_phases(deployment_id):
                     'value': sonar['quality_gate_status'],
                     'ok': bool(sonar['passed'])
                 })
+            if pkey == 'post_install' and post_install:
+                details.extend(post_install_details(post_install))
 
             phases.append({
                 'key': pkey,

@@ -313,6 +313,21 @@ target_vm:
 
 ---
 
+### Fase 6: Verificación post-instalación
+
+**Script**: `python/post_install_check.py`
+
+**Funciones**:
+- Espera el reboot de `install.sh` y reintenta el login SSH durante la ventana de reinicio.
+- Entra con `post_install.ssh_user` / `post_install.current_password` usando `pexpect` (la contraseña se lee de `TARGET_VM_CURRENT_PASSWORD`).
+- Si `post_install.install_ssh_key` es false, ejecuta los checks en la misma sesión (home no escribible).
+- Comprueba servicios (`mcttcf`, `chronyd`, `network`, `sshd`), bond `bond0` y esclavos, directorios de instalación, ruta por defecto (`/proc/net/route`), uso de disco y arranque reciente.
+- Guarda el detalle en `post_install_results`; cualquier check fallido marca el pipeline como `failed` en la fase `post_install`.
+
+**Dependencia**: `python3-pexpect` en la imagen del orquestador (no en el host).
+
+---
+
 ## Librería Compartida
 
 ### 📚 common.sh

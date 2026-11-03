@@ -178,7 +178,7 @@ run_compilation() {
         local ssh_key="${CICD_BUILD_SSH_KEY:-/home/agent/.ssh/id_rsa}"
         local remote_wrapper="${CICD_BUILD_WRAPPER:-$build_wrapper}"
         local remote_runner="${CICD_BUILD_RUNNER:-/home/agent/cicd-host/build_runner.sh}"
-        local -a ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
+        local -a ssh_opts=("${SSH_COMMON_OPTS[@]}" -o ConnectTimeout=10)
         if [[ -f "$ssh_key" ]]; then
             ssh_opts+=(-i "$ssh_key")
         fi

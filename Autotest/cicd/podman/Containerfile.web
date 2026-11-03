@@ -12,7 +12,12 @@ FROM ${BASE_IMAGE}
 ARG AGENT_UID=1000
 ARG AGENT_GID=1000
 
-RUN zypper -n refresh && \
+# Los repos del Leap apuntan a http://download.opensuse.org; algunos mirrors
+# sirven metadatos con checksum incorrecto. Con HTTPS el redirect elige un
+# mirror consistente y el refresh no falla.
+RUN sed -i 's#http://download.opensuse.org#https://download.opensuse.org#g' \
+        /etc/zypp/repos.d/*.repo && \
+    zypper -n refresh && \
     zypper -n install --no-recommends \
         bash coreutils python3 python3-pip ca-certificates curl && \
     zypper -n clean -a

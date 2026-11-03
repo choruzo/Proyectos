@@ -73,6 +73,27 @@ target_vm:
   install_script: install.sh
   install_params: "ope 1 - YES yes"  # Parámetros para el script de instalación
 
+# Fase 6: verificación posterior a la instalación (tras el reboot de install.sh)
+# Se ejecuta dentro del contenedor orquestador (pexpect va en la imagen).
+post_install:
+  enabled: true                  # Si es false, la fase termina sin hacer nada
+  ssh_user: mcftpuser            # Usuario permitido por la AllowGroups de sshd
+  current_password: "${TARGET_VM_CURRENT_PASSWORD}"  # Definir en config/.env
+  install_ssh_key: false         # El home de mcftpuser no es escribible
+  # new_password: ""             # Solo si el login obliga a cambiarla (TARGET_VM_NEW_PASSWORD)
+  wait_reboot_timeout: 300       # Segundos esperando que la VM vuelva a aceptar SSH
+  wait_reboot_interval: 15       # Segundos entre intentos
+  settle_seconds: 10             # Espera adicional antes de comprobar
+  checks:
+    services: [mcttcf, chronyd, network, sshd]
+    bond:
+      interface: bond0
+      slaves: [eth0, eth1]
+    opt_dirs: [/opt/gcss, /opt/mc_ttcf, /opt/fdf_if, /opt/gcss_aide]
+    disk_usage_threshold: 90     # % máximo de uso en /
+    gateway: ""                  # Vacío = comprobar la ruta por defecto en /proc/net/route
+    max_uptime_seconds: 1800     # El arranque debe ser reciente (el de install.sh)
+
 notifications:
   wall_enabled: true
   profile_script: /etc/profile.d/informacion.sh

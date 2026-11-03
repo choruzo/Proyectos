@@ -10,8 +10,9 @@ Este pipeline CI/CD automatiza el ciclo completo **Dev → QA → Release → De
 2. **Compilación** - Checkout del tag, build de DVDs/ISOs
 3. **Análisis SonarQube** - Verificación de quality gate
 4. **Despliegue** - Upload a datastore vCenter, configuración VM, instalación vía SSH
-5. **Notificaciones** - Mensajes wall y actualización de `/etc/profile.d/informacion.sh`
-6. **Auditoría** - Registro completo en SQLite
+5. **Verificación post-instalación** - Servicios, bond, rutas, disco y arranque tras el reboot
+6. **Notificaciones** - Mensajes wall y actualización de `/etc/profile.d/informacion.sh`
+7. **Auditoría** - Registro completo en SQLite
 
 ## Arquitectura
 

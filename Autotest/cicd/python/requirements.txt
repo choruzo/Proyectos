@@ -24,3 +24,7 @@ idna>=2.5,<4.0
 
 # HTTP library
 urllib3>=1.21.1,<2.0.0
+
+# NOTA: pexpect (Fase 6, post_install_check.py) NO se instala en el host.
+# Va dentro de la imagen del orquestador: podman/Containerfile.orchestrator
+# instala el paquete python3-pexpect de SUSE.

@@ -8,7 +8,8 @@
 #   3. Análisis SonarQube
 #   4. Generación de checksums (sha256sum + ZIP) y documentación Doxygen
 #   5. Despliegue en vCenter + VM
-#   6. Finalización y notificaciones
+#   6. Verificación post-instalación (servicios, bond, rutas, disco)
+#   7. Finalización y notificaciones
 #
 # Uso:
 #   ./ci_cd.sh daemon           # Modo daemon (polling continuo)
@@ -176,6 +177,7 @@ verify_environment() {
         "scripts/notify.sh"
         "python/sonar_check.py"
         "python/vcenter_api.py"
+        "python/post_install_check.py"
     )
     
     for script in "${scripts[@]}"; do
@@ -197,7 +199,19 @@ verify_environment() {
             ((errors++))
         fi
     done
-    
+
+    # Fase 6: pexpect solo es necesario si post_install está activo
+    local post_install_enabled
+    post_install_enabled=$(config_get "post_install.enabled" "false")
+    if [[ "$post_install_enabled" =~ ^(true|yes|1|on)$ ]]; then
+        if python3 -c "import pexpect" &>/dev/null; then
+            log_debug "Dependencia OK: pexpect"
+        else
+            log_error "pexpect no está instalado y post_install.enabled=true; falta en la imagen del orquestador (python3-pexpect)"
+            ((errors++))
+        fi
+    fi
+
     if [[ $errors -gt 0 ]]; then
         log_error "Se encontraron $errors errores de configuración"
         return 1
@@ -493,7 +507,7 @@ run_pipeline() {
     # FASE 1: Checkout del tag
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[1/6] CHECKOUT DEL TAG"
+    log_info "[1/7] CHECKOUT DEL TAG"
     log_info "───────────────────────────────────────────────────────────"
     pipeline_phase checkout "Checkout del tag"
     
@@ -510,7 +524,7 @@ run_pipeline() {
     # FASE 2: Compilación
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[2/6] COMPILACIÓN"
+    log_info "[2/7] COMPILACIÓN"
     log_info "───────────────────────────────────────────────────────────"
     pipeline_phase compile "Compilación"
     
@@ -528,7 +542,7 @@ run_pipeline() {
     # FASE 3: Análisis SonarQube
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[3/6] ANÁLISIS SONARQUBE"
+    log_info "[3/7] ANÁLISIS SONARQUBE"
     log_info "───────────────────────────────────────────────────────────"
     pipeline_phase sonarqube "Análisis SonarQube"
     
@@ -654,7 +668,7 @@ run_pipeline() {
         local ssh_target="${CICD_SONAR_SSH:-${CICD_BUILD_SSH:-agent@127.0.0.1}}"
         local ssh_key="${CICD_SONAR_SSH_KEY:-${CICD_BUILD_SSH_KEY:-/home/agent/.ssh/id_rsa}}"
         local sonar_runner="${CICD_SONAR_RUNNER:-/home/agent/cicd-host/sonar_runner.sh}"
-        local -a ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
+        local -a ssh_opts=("${SSH_COMMON_OPTS[@]}" -o ConnectTimeout=10)
         if [[ -f "$ssh_key" ]]; then
             ssh_opts+=(-i "$ssh_key")
         fi
@@ -717,7 +731,7 @@ run_pipeline() {
     # FASE 4: Generación de checksums y documentación Doxygen
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[4/6] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
+    log_info "[4/7] GENERACIÓN DE CHECKSUMS Y DOCUMENTACIÓN"
     log_info "───────────────────────────────────────────────────────────"
     pipeline_phase checksums "Checksums y documentación"
 
@@ -899,7 +913,7 @@ PY
     # FASE 5: Despliegue en vCenter + VM
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[5/6] DESPLIEGUE"
+    log_info "[5/7] DESPLIEGUE"
     log_info "───────────────────────────────────────────────────────────"
     pipeline_phase vcenter "Despliegue en vCenter"
     
@@ -998,10 +1012,30 @@ PY
     log_ok "Despliegue completado"
 
     #---------------------------------------------------------------------------
-    # FASE 6: Finalización y notificaciones
+    # FASE 6: Verificación post-instalación
     #---------------------------------------------------------------------------
     log_info ""
-    log_info "[6/6] FINALIZACIÓN"
+    log_info "[6/7] VERIFICACIÓN POST-INSTALACIÓN"
+    log_info "───────────────────────────────────────────────────────────"
+    pipeline_phase post_install "Verificación post-instalación"
+
+    # install.sh reinicia la VM; post_install_check.py espera el reboot, entra
+    # con el usuario de verificación (mcftpuser por defecto, pexpect) y
+    # comprueba servicios, bond, rutas, gateway y disco en esa sesión. Si el
+    # login exige cambiar la contraseña usa TARGET_VM_NEW_PASSWORD. Con
+    # post_install.enabled=false termina sin hacer nada.
+    if ! DEPLOYMENT_ID="$deployment_id" python3 "$SCRIPT_DIR/python/post_install_check.py" "$CONFIG_FILE" "$tag"; then
+        cleanup_on_error "Fallo en verificación post-instalación" "post_install"
+        return 1
+    fi
+
+    log_ok "Verificación post-instalación completada"
+
+    #---------------------------------------------------------------------------
+    # FASE 7: Finalización y notificaciones
+    #---------------------------------------------------------------------------
+    log_info ""
+    log_info "[7/7] FINALIZACIÓN"
     log_info "───────────────────────────────────────────────────────────"
     
     local end_time

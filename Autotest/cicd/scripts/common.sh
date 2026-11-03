@@ -24,6 +24,23 @@ fi
 # Asegurar que existe el directorio de logs
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 
+#===============================================================================
+# Seguridad SSH (A6)
+#===============================================================================
+# Verificación de la clave del host: accept-new confía en el primer contacto y
+# rechaza un cambio posterior (MITM). En el contenedor ~/.ssh se monta en solo
+# lectura, así que el known_hosts vive en logs/ (volumen escribible). Se puede
+# sobreescribir con CICD_KNOWN_HOSTS_FILE.
+CICD_KNOWN_HOSTS_FILE="${CICD_KNOWN_HOSTS_FILE:-$LOG_DIR/ssh_known_hosts}"
+mkdir -p "$(dirname "$CICD_KNOWN_HOSTS_FILE")" 2>/dev/null || true
+[[ -f "$CICD_KNOWN_HOSTS_FILE" ]] || : > "$CICD_KNOWN_HOSTS_FILE" 2>/dev/null || true
+chmod 600 "$CICD_KNOWN_HOSTS_FILE" 2>/dev/null || true
+
+# Opciones SSH comunes (verificación de host + modo batch)
+SSH_COMMON_OPTS=(-o StrictHostKeyChecking=accept-new \
+                 -o "UserKnownHostsFile=$CICD_KNOWN_HOSTS_FILE" \
+                 -o BatchMode=yes)
+
 # Fichero de log del día. Si no se fija LOG_FILE desde fuera, log() lo
 # recalcula en cada llamada: un proceso que sigue vivo al cambiar de día (el
 # daemon) pasa a escribir en el fichero del día nuevo.
@@ -343,6 +360,19 @@ db_ensure_schema() {
         db_query "ALTER TABLE deployments ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1" || return 1
         log_info "Migración BD: añadida columna deployments.attempt"
     fi
+
+    # Resultados de la verificación post-instalación (Fase 6)
+    db_query "CREATE TABLE IF NOT EXISTS post_install_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        deployment_id INTEGER REFERENCES deployments(id),
+        tag TEXT NOT NULL,
+        passed INTEGER CHECK(passed IN (0, 1)),
+        checks_json TEXT,
+        error_message TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )" || return 1
+    db_query "CREATE INDEX IF NOT EXISTS idx_post_install_deployment
+              ON post_install_results(deployment_id)" || return 1
 }
 
 # Recrear la tabla deployments sin el UNIQUE de tag_name (SQLite no permite
@@ -444,8 +474,8 @@ db_mark_tag_skipped() {
 ssh_exec() {
     local cmd=$1
     local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
-    local ssh_opts="-o StrictHostKeyChecking=no -o BatchMode=yes -i $ssh_key"
-    
+    local ssh_opts="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$CICD_KNOWN_HOSTS_FILE -o BatchMode=yes -i $ssh_key"
+
     ssh $ssh_opts "${TARGET_VM_USER}@${TARGET_VM_IP}" "$cmd"
 }
 
@@ -455,8 +485,8 @@ ssh_copy() {
     local local_path=$1
     local remote_path=$2
     local ssh_key="${TARGET_VM_KEY:-/home/agent/.ssh/id_rsa}"
-    local ssh_opts="-o StrictHostKeyChecking=no -o BatchMode=yes -i $ssh_key"
-    
+    local ssh_opts="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$CICD_KNOWN_HOSTS_FILE -o BatchMode=yes -i $ssh_key"
+
     scp $ssh_opts "$local_path" "${TARGET_VM_USER}@${TARGET_VM_IP}:${remote_path}"
 }
 
