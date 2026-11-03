@@ -71,7 +71,7 @@ if [[ -f "$KEY" && -f "$PUB" ]]; then
     fi
 
     echo "==> Probando SSH local"
-    if ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 \
+    if ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 \
            -i "$KEY" "$(id -un)@127.0.0.1" "echo SSH local OK"; then
         :
     else

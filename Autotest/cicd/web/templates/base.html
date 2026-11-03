@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <meta name="current-user" content="{{ session.get('username', '') }}">
+    <meta name="current-user" content="{{ current_user.username }}">
+    <meta name="app-base" content="{{ request.root_path }}">
     <title>{% block title %}GALTTCMC CI/CD{% endblock %}</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -17,7 +18,7 @@
     <script>applyChartTheme();</script>
     <script defer src="{{ url_for('static', filename='js/alpine.min.js') }}"></script>
 </head>
-<body x-data="appShell()" @keydown.escape.window="navOpen = false">
+<body x-data="appShell()" @keydown.escape.window="navOpen = false" @open-account.window="openAccountModal()">
 
 {% set nav_items = [
     ('index', 'Dashboard', 'dashboard'),
@@ -46,11 +47,13 @@
             </a>
             {% endfor %}
 
+            {% if current_user.is_admin %}
             <div class="nav-label" style="margin-top:.8rem">Administración</div>
             <a href="{{ url_for('users') }}" class="{{ 'active' if request.endpoint == 'users' }}"
                {% if request.endpoint == 'users' %}aria-current="page"{% endif %}>
                 {{ icon('users') }}<span>Usuarios</span>
             </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-foot">
@@ -58,7 +61,7 @@
                 <span class="dot" :class="serviceDot()"></span>
                 <span>cicd.service — <span x-text="service.status === 'active' ? 'activo' : service.status"></span></span>
             </span>
-            <span class="mono">agent@192.0.2.137</span>
+            <span class="mono">agent@{{ server_ip }}</span>
             <span class="mono">SUSE 15 · v1.0.0</span>
         </div>
     </aside>
@@ -77,15 +80,50 @@
             </button>
 
             <div class="user-chip">
-                <span class="avatar">{{ (session.get('username', '?') or '?')[0] | upper }}</span>
-                <span class="hide-sm">{{ session.get('username', '') }}</span>
+                <span class="avatar">{{ (current_user.username or '?')[0] | upper }}</span>
+                <span class="hide-sm">{{ current_user.username }}</span>
+                {% if current_user.is_admin %}<span class="badge b-info hide-sm">admin</span>{% endif %}
             </div>
+            <button type="button" class="btn-icon" @click="openAccountModal()" title="Cambiar mi contraseña" aria-label="Cambiar mi contraseña">{{ icon('key') }}</button>
             <a href="{{ url_for('logout') }}" class="btn-icon" title="Cerrar sesión" aria-label="Cerrar sesión">{{ icon('logout') }}</a>
         </header>
 
         <main class="content">
             {% block content %}{% endblock %}
         </main>
+    </div>
+</div>
+
+<!-- Mi contraseña (cualquier usuario; exige la contraseña actual) -->
+<div class="overlay" x-show="accountModal" x-cloak @click.self="accountModal = false" @keydown.escape.window="accountModal = false">
+    <div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="acc-title">
+        <div class="modal-head">
+            <h3 id="acc-title">{{ icon('key', 'ico-sm') }} Mi contraseña</h3>
+            <button class="btn-icon" @click="accountModal = false" aria-label="Cerrar">{{ icon('x') }}</button>
+        </div>
+        <div class="modal-body stack">
+            <div class="notice err" x-show="accountError" x-cloak>{{ icon('alert', 'ico-sm') }}<span x-text="accountError"></span></div>
+            <div class="field">
+                <label for="acc-cur">Contraseña actual</label>
+                <input id="acc-cur" class="input" type="password" x-model="accountForm.current" @keydown.enter="saveAccountPassword()" autocomplete="current-password">
+            </div>
+            <div class="field">
+                <label for="acc-new">Nueva contraseña <span class="hint">(mín. 8 caracteres)</span></label>
+                <input id="acc-new" class="input" type="password" x-model="accountForm.password" @keydown.enter="saveAccountPassword()" autocomplete="new-password">
+            </div>
+            <div class="field">
+                <label for="acc-conf">Confirmar contraseña</label>
+                <input id="acc-conf" class="input" type="password" x-model="accountForm.confirm" @keydown.enter="saveAccountPassword()" autocomplete="new-password">
+            </div>
+            <p style="font-size:.8rem;color:var(--dim)">Se cerrarán las demás sesiones abiertas con tu usuario.</p>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" @click="accountModal = false">Cancelar</button>
+            <button class="btn primario" @click="saveAccountPassword()" :disabled="accountSaving">
+                <span x-show="accountSaving" class="spinner"></span>
+                <span x-text="accountSaving ? 'Guardando…' : 'Cambiar'"></span>
+            </button>
+        </div>
     </div>
 </div>
 

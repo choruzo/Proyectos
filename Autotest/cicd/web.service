@@ -13,6 +13,11 @@ Environment="FLASK_ENV=production"
 Environment="WEB_HOST=0.0.0.0"
 Environment="WEB_PORT=8080"
 Environment="WEB_DEBUG=false"
+# Montaje bajo prefijo en el portal (Nginx /cicd/). Descomentar SOLO si la Web
+# se publica siempre a través del portal: los enlaces y redirecciones se
+# generarían con el prefijo y el acceso directo a http://<host>:8080 dejaría
+# de funcionar. No hace falta si el proxy ya manda X-Forwarded-Prefix.
+# Environment="WEB_ROOT_PATH=/cicd"
 EnvironmentFile=-/home/YOUR_USER/cicd/config/.env
 
 # Gunicorn production server

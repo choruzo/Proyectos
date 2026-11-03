@@ -180,12 +180,12 @@ setup_ssh_keys() {
         log_info "Copiando clave pública a $target_vm..."
         log_warn "Introduce la contraseña de ${target_user}@${target_vm}"
         
-        if ssh-copy-id -i "${ssh_key}.pub" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${target_user}@${target_vm}"; then
+        if ssh-copy-id -i "${ssh_key}.pub" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "${target_user}@${target_vm}"; then
             log_ok "Clave pública copiada a la VM destino"
             
             # Verificar conexión
             log_info "Verificando conexión SSH sin contraseña..."
-            if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$ssh_key" "${target_user}@${target_vm}" "echo 'SSH OK'" 2>/dev/null; then
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -i "$ssh_key" "${target_user}@${target_vm}" "echo 'SSH OK'" 2>/dev/null; then
                 log_ok "Conexión SSH sin contraseña: FUNCIONAL"
             else
                 log_warn "Conexión SSH sin contraseña aún no funciona"
@@ -248,6 +248,12 @@ SONAR_TOKEN=your_sonar_token_here
 VCENTER_USER=administrator@vsphere.local
 VCENTER_PASSWORD=your_vcenter_password_here
 EOF
+        # W1: la Web no arranca sin SECRET_KEY propia. Se genera una aleatoria.
+        local secret_key
+        secret_key=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+        if [[ -n "$secret_key" ]]; then
+            printf 'SECRET_KEY=%s\n' "$secret_key" >> "$env_file"
+        fi
         chmod 600 "$env_file"
         log_ok "Fichero .env creado: $env_file"
         log_warn "IMPORTANTE: Edita $env_file con las credenciales reales"

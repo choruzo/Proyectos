@@ -304,7 +304,7 @@ function pipelineRunsData() {
         async loadDeployments(page) {
             if (page < 1) return;
             try {
-                const response = await fetch(`/api/deployments?page=${page}&status=${this.statusFilter}`);
+                const response = await fetch(appUrl(`/api/deployments?page=${page}&status=${this.statusFilter}`));
                 const data = await response.json();
                 this.deployments = data.deployments || [];
                 this.currentPage = data.page || 1;
@@ -318,7 +318,7 @@ function pipelineRunsData() {
         async viewDetails(deploymentId) {
             try {
                 this.phasesData = null;
-                const response = await fetch(`/api/deployment/${deploymentId}`);
+                const response = await fetch(appUrl(`/api/deployment/${deploymentId}`));
                 if (!response.ok) {
                     showToast('Deployment #' + deploymentId + ' no encontrado', 'warning');
                     return;
@@ -341,7 +341,7 @@ function pipelineRunsData() {
 
         async loadPhases(deploymentId) {
             try {
-                const response = await fetch(`/api/deployment/${deploymentId}/phases`);
+                const response = await fetch(appUrl(`/api/deployment/${deploymentId}/phases`));
                 this.phasesData = await response.json();
             } catch (error) {
                 console.error('Error loading phases:', error);

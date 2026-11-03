@@ -261,12 +261,18 @@ def password_stamp():
 def inject_globals():
     """Inyecta csrf_token y el usuario actual en todos los templates."""
     user = getattr(g, 'user', None)
+    config = load_config() or {}
+    target_vm = config.get('target_vm') or {}
+    server_ip = os.environ.get('CICD_SERVER_IP', '').strip() or \
+        request.host.split(':')[0]
     return {
         'csrf_token': generate_csrf_token(),
         'current_user': {
             'username': user['username'] if user else '',
             'is_admin': bool(user and user['is_admin']),
         },
+        'server_ip': server_ip,
+        'target_vm_ip': str(target_vm.get('ip') or ''),
     }
 
 

@@ -32,7 +32,7 @@
         <div class="table-wrap" x-show="!loading && users.length > 0" x-cloak>
             <table class="t">
                 <thead>
-                    <tr><th>Usuario</th><th>Estado</th><th>Creado</th><th>Último login</th><th class="r">Acciones</th></tr>
+                    <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Último login</th><th class="r">Acciones</th></tr>
                 </thead>
                 <tbody>
                     <template x-for="(user, i) in users" :key="user.username">
@@ -43,6 +43,9 @@
                                     <span style="font-weight:600" x-text="user.username"></span>
                                     <span x-show="user.username === currentUser" class="badge b-info">tú</span>
                                 </div>
+                            </td>
+                            <td>
+                                <span class="badge" :class="user.is_admin ? 'b-info' : 'b-dim'" x-text="user.is_admin ? 'admin' : 'usuario'"></span>
                             </td>
                             <td>
                                 <span class="badge" :class="user.is_active ? 'b-pass' : 'b-dim'" x-text="user.is_active ? 'activo' : 'inactivo'"></span>
@@ -59,7 +62,15 @@
                                     <span x-show="toggling !== user.username && user.is_active">{{ icon('ban', 'ico-sm') }}</span>
                                     <span x-show="toggling !== user.username && !user.is_active">{{ icon('check-circle', 'ico-sm') }}</span>
                                 </button>
-                                <button class="btn-icon" @click="openPasswordModal(user)" title="Cambiar contraseña" aria-label="Cambiar contraseña">
+                                <button class="btn-icon" @click="toggleAdmin(user)"
+                                        :disabled="user.username === currentUser || toggling === user.username"
+                                        :title="user.username === currentUser ? 'No puedes cambiar tu propio rol' : (user.is_admin ? 'Quitar rol de administrador' : 'Hacer administrador')"
+                                        :aria-label="user.is_admin ? 'Quitar rol de administrador' : 'Hacer administrador'">
+                                    {{ icon('shield', 'ico-sm') }}
+                                </button>
+                                <button class="btn-icon" @click="user.username === currentUser ? openAccountModalFromPage() : openPasswordModal(user)"
+                                        :title="user.username === currentUser ? 'Cambiar mi contraseña' : 'Restablecer contraseña'"
+                                        aria-label="Cambiar contraseña">
                                     {{ icon('key', 'ico-sm') }}
                                 </button>
                             </td>
@@ -92,6 +103,9 @@
                     <label for="cu-conf">Confirmar contraseña</label>
                     <input id="cu-conf" class="input" type="password" x-model="createForm.confirm" @keydown.enter="createUser()" autocomplete="new-password">
                 </div>
+                <label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem">
+                    <input type="checkbox" x-model="createForm.is_admin"> Administrador <span style="color:var(--dim)">(puede gestionar usuarios)</span>
+                </label>
             </div>
             <div class="modal-foot">
                 <button class="btn" @click="showCreateModal = false">Cancelar</button>
@@ -107,7 +121,7 @@
     <div class="overlay" x-show="showPasswordModal" x-cloak @click.self="showPasswordModal = false">
         <div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pw-title">
             <div class="modal-head">
-                <h3 id="pw-title">{{ icon('key', 'ico-sm') }} Cambiar contraseña
+                <h3 id="pw-title">{{ icon('key', 'ico-sm') }} Restablecer contraseña
                     <template x-if="selectedUser"><span class="tag" x-text="selectedUser.username"></span></template>
                 </h3>
                 <button class="btn-icon" @click="showPasswordModal = false" aria-label="Cerrar">{{ icon('x') }}</button>
@@ -122,6 +136,7 @@
                     <label for="pw-conf">Confirmar contraseña</label>
                     <input id="pw-conf" class="input" type="password" x-model="passwordForm.confirm" @keydown.enter="changePassword()" autocomplete="new-password">
                 </div>
+                <p style="font-size:.8rem;color:var(--dim)">Se cerrarán las sesiones abiertas de este usuario.</p>
             </div>
             <div class="modal-foot">
                 <button class="btn" @click="showPasswordModal = false">Cancelar</button>
@@ -149,7 +164,7 @@ function usersPage() {
         changingPassword: false,
         toggling: '',
         modalError: '',
-        createForm: { username: '', password: '', confirm: '' },
+        createForm: { username: '', password: '', confirm: '', is_admin: false },
         passwordForm: { password: '', confirm: '' },
         currentUser: '',
 
@@ -168,9 +183,10 @@ function usersPage() {
         loadUsers: function() {
             this.pageError = '';
             var self = this;
-            fetch('/api/users')
+            fetch(appUrl('/api/users'))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                    if (data && data.error) self.pageError = data.error;
                     self.users = Array.isArray(data) ? data : [];
                     self.loading = false;
                 })
@@ -181,7 +197,7 @@ function usersPage() {
         },
 
         openCreateModal: function() {
-            this.createForm = { username: '', password: '', confirm: '' };
+            this.createForm = { username: '', password: '', confirm: '', is_admin: false };
             this.modalError = '';
             this.creating = false;
             this.showCreateModal = true;
@@ -216,13 +232,13 @@ function usersPage() {
             }
             this.creating = true;
             var self = this;
-            fetch('/api/users', {
+            fetch(appUrl('/api/users'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': this.csrfToken()
                 },
-                body: JSON.stringify({ username: username, password: password })
+                body: JSON.stringify({ username: username, password: password, is_admin: this.createForm.is_admin })
             })
             .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
             .then(function(res) {
@@ -247,7 +263,7 @@ function usersPage() {
             this.toggling = user.username;
             this.pageError = '';
             var self = this;
-            fetch('/api/users/' + encodeURIComponent(user.username) + '/toggle', {
+            fetch(appUrl('/api/users/' + encodeURIComponent(user.username) + '/toggle'), {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': this.csrfToken() }
             })
@@ -261,6 +277,37 @@ function usersPage() {
                 self.loadUsers();
                 var accion = res.data.is_active ? 'activado' : 'desactivado';
                 showToast('Usuario "' + res.data.username + '" ' + accion + '.', 'success');
+            })
+            .catch(function(e) {
+                self.toggling = '';
+                self.pageError = 'Error de red: ' + e.message;
+            });
+        },
+
+        // El shell (base.html) tiene el modal "Mi contraseña", que pide la actual
+        openAccountModalFromPage: function() {
+            window.dispatchEvent(new CustomEvent('open-account'));
+        },
+
+        toggleAdmin: function(user) {
+            if (user.username === this.currentUser || this.toggling === user.username) return;
+            this.toggling = user.username;
+            this.pageError = '';
+            var self = this;
+            fetch(appUrl('/api/users/' + encodeURIComponent(user.username) + '/admin'), {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken() }
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                self.toggling = '';
+                if (!res.ok) {
+                    self.pageError = res.data.error || 'Error cambiando el rol del usuario.';
+                    return;
+                }
+                self.loadUsers();
+                var rol = res.data.is_admin ? 'ahora es administrador' : 'ya no es administrador';
+                showToast('"' + res.data.username + '" ' + rol + '.', 'success');
             })
             .catch(function(e) {
                 self.toggling = '';
@@ -282,7 +329,7 @@ function usersPage() {
             }
             this.changingPassword = true;
             var self = this;
-            fetch('/api/users/' + encodeURIComponent(this.selectedUser.username) + '/change-password', {
+            fetch(appUrl('/api/users/' + encodeURIComponent(this.selectedUser.username) + '/change-password'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -87,6 +87,7 @@ install -m 0755 %{_sourcedir}/scripts/db_viewer.sh %{buildroot}%{_app_dir}/scrip
 # Copiar scripts Python
 install -m 0755 %{_sourcedir}/python/sonar_check.py %{buildroot}%{_app_dir}/python/
 install -m 0755 %{_sourcedir}/python/vcenter_api.py %{buildroot}%{_app_dir}/python/
+install -m 0755 %{_sourcedir}/python/post_install_check.py %{buildroot}%{_app_dir}/python/
 install -m 0644 %{_sourcedir}/python/requirements.txt %{buildroot}%{_app_dir}/python/
 
 # Copiar librerías Python offline (wheels)
@@ -142,6 +143,10 @@ SONAR_TOKEN=tu_token_sonarqube
 # vCenter credentials
 VCENTER_USER=usuario_vcenter
 VCENTER_PASSWORD=password_vcenter
+
+# Web UI session key (obligatoria: la Web no arranca sin ella)
+# Generar con: python3 -c "import binascii,os; print(binascii.hexlify(os.urandom(32)).decode())"
+SECRET_KEY=your_random_secret_key_here
 
 # Target VM SSH key (ruta absoluta)
 TARGET_VM_KEY=/home/agent/.ssh/id_rsa

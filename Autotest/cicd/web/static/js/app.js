@@ -4,6 +4,22 @@
 
 // ==================== Estado / insignias ====================
 
+// Base de la aplicacion: vacia en acceso directo (:8080) y "/cicd" cuando
+// Nginx la publica bajo un prefijo. Se lee del <meta name="app-base"> que
+// pinta base.html con request.script_root, y se resuelve en cada llamada por
+// si el DOM aun no esta disponible.
+function appBase() {
+    var el = document.querySelector('meta[name="app-base"]');
+    return (el && el.getAttribute('content')) || '';
+}
+
+// appUrl('/api/x') -> '/api/x' o '/cicd/api/x'
+function appUrl(path) {
+    var base = appBase();
+    if (!base) return path;
+    return path.charAt(0) === '/' ? base + path : base + '/' + path;
+}
+
 var RUNNING_STATUSES = ['compiling', 'analyzing', 'deploying'];
 
 function isRunning(status) {
@@ -27,25 +43,25 @@ function gateClass(gate) {
     return 'b-dim';
 }
 
-// Segmentos de progreso (5 fases) a partir del estado global del deployment
+// Segmentos de progreso (6 fases). El estado de cada fase lo calcula la API
+// (phase_states) a partir de deployments.current_phase / failed_phase.
 var PIPELINE_PHASES = [
-    { key: 'checkout', label: 'Git Checkout' },
-    { key: 'compile',  label: 'Compilación' },
-    { key: 'analyze',  label: 'SonarQube' },
-    { key: 'deploy',   label: 'vCenter Deploy' },
-    { key: 'notify',   label: 'SSH Install' }
+    { key: 'checkout',   label: 'Git Checkout' },
+    { key: 'compile',    label: 'Compilación' },
+    { key: 'sonarqube',  label: 'SonarQube' },
+    { key: 'checksums',  label: 'Checksums y Doxygen' },
+    { key: 'vcenter',    label: 'vCenter' },
+    { key: 'ssh_deploy', label: 'Instalación SSH' }
 ];
 
-function phaseSegs(status) {
-    var numDone = { pending: 0, compiling: 1, analyzing: 2, deploying: 3, success: 5, failed: 0 }[status] || 0;
+var PHASE_SEG_CLASS = { completed: 'done', active: 'run', failed: 'fail' };
+
+function phaseSegs(d) {
+    var states = (d && d.phase_states) || [];
     return PIPELINE_PHASES.map(function(p, i) {
-        var cls = '';
-        if (status === 'success' || i < numDone) {
-            cls = 'done';
-        } else if (isRunning(status) && i === numDone) {
-            cls = 'run';
-        }
-        return { key: p.key, label: p.label, cls: cls };
+        var st = states[i] || 'pending';
+        var label = p.label + (st === 'unknown' ? ' (sin datos)' : '');
+        return { key: p.key, label: label, cls: PHASE_SEG_CLASS[st] || '' };
     });
 }
 
@@ -198,6 +214,10 @@ function appShell() {
         navOpen: false,
         autoRefresh: false,
         service: { status: 'unknown', running: false },
+        accountModal: false,
+        accountSaving: false,
+        accountError: '',
+        accountForm: { current: '', password: '', confirm: '' },
 
         init: function() {
             var self = this;
@@ -207,7 +227,7 @@ function appShell() {
 
         checkService: function() {
             var self = this;
-            fetch('/api/pipeline/status')
+            fetch(appUrl('/api/pipeline/status'))
                 .then(function(r) { return r.json(); })
                 .then(function(d) { self.service = d; })
                 .catch(function() { self.service = { status: 'unknown', running: false }; });
@@ -218,6 +238,40 @@ function appShell() {
             if (this.service.status === 'failed') return 'err';
             if (this.service.status === 'inactive') return 'warn';
             return '';
+        },
+
+        openAccountModal: function() {
+            this.accountForm = { current: '', password: '', confirm: '' };
+            this.accountError = '';
+            this.accountSaving = false;
+            this.accountModal = true;
+            this.$nextTick(function() { var el = document.getElementById('acc-cur'); if (el) el.focus(); });
+        },
+
+        saveAccountPassword: function() {
+            var f = this.accountForm;
+            this.accountError = '';
+            if (!f.current) { this.accountError = 'Introduce tu contraseña actual.'; return; }
+            if (f.password.length < 8) { this.accountError = 'La contraseña debe tener al menos 8 caracteres.'; return; }
+            if (f.password !== f.confirm) { this.accountError = 'Las contraseñas no coinciden.'; return; }
+            this.accountSaving = true;
+            var self = this;
+            fetch(appUrl('/api/account/password'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ current_password: f.current, password: f.password })
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                self.accountSaving = false;
+                if (!res.ok) { self.accountError = res.data.error || 'Error cambiando la contraseña.'; return; }
+                self.accountModal = false;
+                showToast('Contraseña actualizada.', 'success');
+            })
+            .catch(function(e) {
+                self.accountSaving = false;
+                self.accountError = 'Error de red: ' + e.message;
+            });
         },
 
         toggleAutoRefresh: function() {
@@ -231,7 +285,13 @@ function appShell() {
     };
 }
 
+function csrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
 // Export
+window.csrfToken = csrfToken;
 window.isRunning = isRunning;
 window.statusClass = statusClass;
 window.gateClass = gateClass;

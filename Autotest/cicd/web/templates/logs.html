@@ -105,7 +105,8 @@ function logsData() {
         maxLines: 500,
         liveMode: false,
         liveTailTimer: null,
-        lastTotalLines: 0,
+        liveBusy: false,
+        logOffset: 0,
 
         async init() {
             await this.loadLogFiles();
@@ -119,7 +120,7 @@ function logsData() {
 
         async loadLogFiles() {
             try {
-                const response = await fetch('/api/logs/list');
+                const response = await fetch(appUrl('/api/logs/list'));
                 const data = await response.json();
                 this.logFiles = Array.isArray(data) ? data : [];
             } catch (error) {
@@ -132,7 +133,7 @@ function logsData() {
             this.selectedFile = filename;
             this.logContent = null;
             this.searchQuery = '';
-            this.lastTotalLines = 0;
+            this.logOffset = 0;
             await this.viewLogContent();
         },
 
@@ -141,7 +142,7 @@ function logsData() {
             this.loadingLog = true;
             try {
                 const params = new URLSearchParams({ lines: this.maxLines, search: this.searchQuery });
-                const response = await fetch(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`);
+                const response = await fetch(appUrl(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`));
                 const data = await response.json();
                 if (data.error) {
                     this.logContent = 'Error: ' + data.error;
@@ -149,7 +150,7 @@ function logsData() {
                     return;
                 }
                 this.logContent = data.content;
-                this.lastTotalLines = data.file_total_lines || data.total_lines;
+                this.logOffset = data.offset || 0;
                 this.logInfo = { total_lines: data.total_lines, displayed_lines: data.displayed_lines };
             } catch (error) {
                 console.error('Error loading log content:', error);
@@ -166,8 +167,13 @@ function logsData() {
             else this.startLiveTail();
         },
 
-        startLiveTail() {
+        async startLiveTail() {
             if (!this.selectedFile) return;
+            // El live-tail no filtra: si hay búsqueda activa, volver a la vista completa
+            if (this.searchQuery) {
+                this.searchQuery = '';
+                await this.viewLogContent();
+            }
             this.liveMode = true;
             this.liveTailPoll();
             this.liveTailTimer = setInterval(() => { this.liveTailPoll(); }, 2000);
@@ -181,31 +187,50 @@ function logsData() {
             }
         },
 
+        // Pide solo los bytes añadidos desde logOffset y conserva en pantalla
+        // como máximo maxLines líneas.
         async liveTailPoll() {
-            if (!this.selectedFile || !this.liveMode || this.logContent === null) return;
+            if (!this.selectedFile || !this.liveMode || this.logContent === null || this.liveBusy) return;
+            this.liveBusy = true;
             try {
-                const params = new URLSearchParams({ start_line: this.lastTotalLines });
-                const response = await fetch(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`);
-                const data = await response.json();
+                let more = true;
+                while (more && this.liveMode) {
+                    const params = new URLSearchParams({ offset: this.logOffset });
+                    const response = await fetch(appUrl(`/api/logs/view/${encodeURIComponent(this.selectedFile)}?${params}`));
+                    const data = await response.json();
+                    if (data.error) { console.error('Live-tail error:', data.error); return; }
 
-                if (data.file_total_lines < this.lastTotalLines) {
-                    // Fichero rotado/truncado: recarga completa
-                    this.stopLiveTail();
-                    await this.viewLogContent();
-                    return;
-                }
+                    if (data.reset) {
+                        // Fichero truncado o rotado: recarga completa
+                        await this.viewLogContent();
+                        return;
+                    }
+                    more = data.more;
+                    if (!data.content) break;
 
-                if (data.file_total_lines > this.lastTotalLines && data.content) {
-                    this.logContent = this.logContent + data.content;
-                    this.lastTotalLines = data.file_total_lines;
-                    this.logInfo.total_lines = data.file_total_lines;
-                    this.logInfo.displayed_lines = (this.logInfo.displayed_lines || 0) + data.displayed_lines;
+                    this.logOffset = data.offset;
+                    this.appendLines(data.content, data.new_lines);
                     await this.$nextTick();
                     this.scrollToBottom();
                 }
             } catch (error) {
                 console.error('Live-tail error:', error);
+            } finally {
+                this.liveBusy = false;
             }
+        },
+
+        appendLines(text, newLines) {
+            let content = this.logContent + text;
+            const limit = parseInt(this.maxLines, 10) || 500;
+            const lines = content.split('\n');
+            // El contenido termina en salto de línea: el último elemento es vacío
+            if (lines.length - 1 > limit) {
+                content = lines.slice(lines.length - 1 - limit).join('\n');
+            }
+            this.logContent = content;
+            this.logInfo.total_lines = (this.logInfo.total_lines || 0) + newLines;
+            this.logInfo.displayed_lines = Math.min(limit, (this.logInfo.displayed_lines || 0) + newLines);
         },
 
         scrollToBottom() {

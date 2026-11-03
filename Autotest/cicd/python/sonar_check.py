@@ -6,7 +6,11 @@ sonar_check.py - Consulta API SonarQube y valida umbrales
 Compatible con Python 3.6+
 
 Uso:
-    python3.6 sonar_check.py <config_path> <tag>
+    python3.6 sonar_check.py <config_path> <tag> [report_task_file]
+
+Variables de entorno:
+    DEPLOYMENT_ID  id de la fila de deployments que lanza el analisis (lo pasa
+                   ci_cd.sh); se guarda en sonar_results.deployment_id.
 """
 
 from __future__ import print_function
@@ -274,7 +278,13 @@ def _ensure_new_columns(conn):
             print('[*] Columna migrada: {}'.format(col))
 
 
-def save_to_db(db_path, tag, metrics, passed, quality_gate_status='UNKNOWN'):
+def get_deployment_id():
+    """deployment_id desde el entorno (DEPLOYMENT_ID), o None si no es valido."""
+    value = os.environ.get('DEPLOYMENT_ID', '').strip()
+    return int(value) if value.isdigit() else None
+
+
+def save_to_db(db_path, tag, metrics, passed, quality_gate_status='UNKNOWN', deployment_id=None):
     """Guarda resultados en SQLite (overall + new code metrics)"""
     try:
         conn = sqlite3.connect(db_path, timeout=10)
@@ -285,12 +295,13 @@ def save_to_db(db_path, tag, metrics, passed, quality_gate_status='UNKNOWN'):
 
         cursor.execute('''
             INSERT INTO sonar_results
-            (tag, timestamp,
+            (deployment_id, tag, timestamp,
              coverage, bugs, vulnerabilities, code_smells, security_hotspots,
              new_coverage, new_bugs, new_vulnerabilities, new_code_smells, new_security_hotspots,
              passed, quality_gate_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
+            deployment_id,
             tag,
             datetime.now().isoformat(),
             metrics.get('coverage', 0),
@@ -441,7 +452,8 @@ def main():
     # ------------------------------------------------------------------ #
     db_path = config.get('general', {}).get('db_path')
     if db_path:
-        save_to_db(db_path, tag, metrics, sonar_qg_passed, quality_gate_status)
+        save_to_db(db_path, tag, metrics, sonar_qg_passed, quality_gate_status,
+                   deployment_id=get_deployment_id())
 
     # Código de salida basado en Quality Gate de SonarQube
     if sonar_qg_passed:

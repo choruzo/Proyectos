@@ -130,11 +130,11 @@
                 </div>
                 <div class="status-item">
                     <span class="k">{{ icon('server', 'ico-sm') }} Servidor</span>
-                    <span class="v">192.0.2.137</span>
+                    <span class="v">{{ server_ip }}</span>
                 </div>
                 <div class="status-item">
                     <span class="k">{{ icon('rocket', 'ico-sm') }} VM destino</span>
-                    <span class="v">192.0.2.147</span>
+                    <span class="v">{{ target_vm_ip }}</span>
                 </div>
             </div>
         </div>
@@ -163,7 +163,7 @@
                                     <span x-text="d.status"></span>
                                 </span>
                                 <div class="segs" :title="'Progreso por fase'">
-                                    <template x-for="s in phaseSegs(d.status)" :key="s.key"><i :class="s.cls" :title="s.label"></i></template>
+                                    <template x-for="s in phaseSegs(d)" :key="s.key"><i :class="s.cls" :title="s.label"></i></template>
                                 </div>
                             </td>
                             <td class="dim mono nowrap" x-text="d.started_at"></td>
@@ -231,7 +231,7 @@ function dashboardData() {
         async loadPipelineStatus() {
             this.pipelineStatusLoading = true;
             try {
-                const response = await fetch('/api/pipeline/status');
+                const response = await fetch(appUrl('/api/pipeline/status'));
                 this.pipelineStatus = await response.json();
             } catch (error) {
                 this.pipelineStatus = { status: 'unknown', running: false };
@@ -243,7 +243,7 @@ function dashboardData() {
 
         async loadStats() {
             try {
-                const response = await fetch('/api/dashboard/stats');
+                const response = await fetch(appUrl('/api/dashboard/stats'));
                 this.stats = await response.json();
             } catch (error) {
                 console.error('Error loading stats:', error);
@@ -252,7 +252,7 @@ function dashboardData() {
 
         async loadRecentDeployments() {
             try {
-                const response = await fetch('/api/dashboard/recent-deployments');
+                const response = await fetch(appUrl('/api/dashboard/recent-deployments'));
                 const data = await response.json();
                 this.recentDeployments = Array.isArray(data) ? data : [];
                 const first = this.recentDeployments[0] || null;
@@ -269,7 +269,7 @@ function dashboardData() {
 
         async loadLatestPhases(id) {
             try {
-                const response = await fetch('/api/deployment/' + id + '/phases');
+                const response = await fetch(appUrl('/api/deployment/' + id + '/phases'));
                 this.latestPhases = await response.json();
             } catch (error) {
                 console.error('Error loading phases:', error);
@@ -278,7 +278,7 @@ function dashboardData() {
 
         async loadChartData() {
             try {
-                const response = await fetch('/api/dashboard/chart-data');
+                const response = await fetch(appUrl('/api/dashboard/chart-data'));
                 const data = await response.json();
                 if (!data.datasets) return;
                 this.chartHasData = data.labels && data.labels.length > 0;
