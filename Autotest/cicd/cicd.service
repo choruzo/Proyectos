@@ -1,6 +1,6 @@
 [Unit]
 Description=CI/CD Pipeline Service - GALTTCMC
-Documentation=https://git.indra.es/git/GALTTCMC/GALTTCMC
+Documentation=https://git.example.com/git/GALTTCMC/GALTTCMC
 After=network.target network-online.target
 Wants=network-online.target
 

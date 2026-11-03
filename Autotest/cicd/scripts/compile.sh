@@ -147,11 +147,15 @@ run_compilation() {
     local build_wrapper
     build_wrapper="$(dirname "$SCRIPT_DIR")/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64"
     local bw_output_dir="$compile_dir/bw-output"
-    if [[ ! -f "$build_wrapper" ]]; then
+    local build_mode="${CICD_BUILD_MODE:-local}"
+
+    if [[ "$build_mode" != "ssh" && ! -f "$build_wrapper" ]]; then
         log_error "build-wrapper no encontrado: $build_wrapper"
         return 1
     fi
-    chmod +x "$build_wrapper"
+    if [[ "$build_mode" != "ssh" ]]; then
+        chmod +x "$build_wrapper"
+    fi
     mkdir -p "$bw_output_dir"
     log_info "Compilación capturada con build-wrapper (salida: $bw_output_dir)"
 
@@ -166,15 +170,39 @@ run_compilation() {
     # Usamos set +e para capturar el código de salida sin que el script falle
     set +e
 
-    # Ejecutar el script de build
-    # Redirigir stdout y stderr al log, y también mostrar en pantalla
-    timeout "$timeout_secs" "$build_wrapper" --out-dir "$bw_output_dir" bash -c "
-        cd '$compile_dir'
-        './$build_script' 2>&1
-    " 2>&1 | tee -a "$COMPILE_LOG_FILE"
-    
-    exit_code=${PIPESTATUS[0]}
-    
+    if [[ "$build_mode" == "ssh" ]]; then
+        # La compilación real corre en el host SUSE (toolchain + build_DVDs.sh).
+        # El contenedor solo prepara/valida el workspace compartido y delega el
+        # build por SSH a 127.0.0.1 (network_mode: host en Podman).
+        local ssh_target="${CICD_BUILD_SSH:-agent@127.0.0.1}"
+        local ssh_key="${CICD_BUILD_SSH_KEY:-/home/agent/.ssh/id_rsa}"
+        local remote_wrapper="${CICD_BUILD_WRAPPER:-$build_wrapper}"
+        local remote_runner="${CICD_BUILD_RUNNER:-/home/agent/cicd-host/build_runner.sh}"
+        local -a ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
+        if [[ -f "$ssh_key" ]]; then
+            ssh_opts+=(-i "$ssh_key")
+        fi
+
+        log_info "Compilación delegada al host: $ssh_target"
+        log_info "Runner remoto: $remote_runner"
+
+        timeout --kill-after=60 "$((timeout_secs + 120))" \
+            ssh "${ssh_opts[@]}" "$ssh_target" \
+            "$remote_runner '$compile_dir' '$build_script' '$remote_wrapper' '$timeout_secs'" \
+            2>&1 | tee -a "$COMPILE_LOG_FILE"
+
+        exit_code=${PIPESTATUS[0]}
+    else
+        # Ejecutar el script de build
+        # Redirigir stdout y stderr al log, y también mostrar en pantalla
+        timeout "$timeout_secs" "$build_wrapper" --out-dir "$bw_output_dir" bash -c "
+            cd '$compile_dir'
+            './$build_script' 2>&1
+        " 2>&1 | tee -a "$COMPILE_LOG_FILE"
+
+        exit_code=${PIPESTATUS[0]}
+    fi
+
     set -e
     
     local end_time

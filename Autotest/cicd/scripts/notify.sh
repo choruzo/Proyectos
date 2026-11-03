@@ -34,6 +34,10 @@ notify_wall() {
     
     local wall_enabled
     wall_enabled=$(config_get "notifications.wall_enabled" "true")
+    # Permite desactivar 'wall' en contenedores (no alcanza las TTY del host).
+    if [[ -n "${CICD_WALL_ENABLED:-}" ]]; then
+        wall_enabled="$CICD_WALL_ENABLED"
+    fi
     
     if [[ "$wall_enabled" != "true" ]]; then
         log_debug "Notificaciones wall deshabilitadas"
@@ -183,7 +187,7 @@ update_profile_script() {
     
     # Obtener información adicional
     local sonar_url
-    sonar_url=$(config_get "sonarqube.url" "https://sonarqube.indra.es")
+    sonar_url=$(config_get "sonarqube.url" "https://YOUR_SONARQUBE_SERVER")
     local project_key
     project_key=$(config_get "sonarqube.project_key" "GALTTCMC")
     

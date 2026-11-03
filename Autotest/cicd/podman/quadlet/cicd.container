@@ -1,0 +1,49 @@
+# =============================================================================
+# Quadlet: orquestador CI/CD GALTTCMC
+# Instalar en ~/.config/containers/systemd/cicd.container
+# =============================================================================
+# La compilación y el análisis Sonar se delegan al host por SSH (127.0.0.1).
+# Requiere: podman rootless, ~/.ssh/id_rsa, sshd y los runners de ~/cicd-host.
+# =============================================================================
+
+[Unit]
+Description=GALTTCMC CI/CD orchestrator (Podman)
+
+[Container]
+Image=localhost/cicd-orchestrator:local
+ContainerName=cicd
+Network=host
+UserNS=keep-id
+
+Environment=HOME=/home/agent
+Environment=CICD_HOME=/home/agent/cicd
+Environment=CICD_BUILD_MODE=ssh
+Environment=CICD_BUILD_SSH=agent@127.0.0.1
+Environment=CICD_BUILD_RUNNER=/home/agent/cicd-host/build_runner.sh
+Environment=CICD_BUILD_WRAPPER=/home/agent/cicd-host/utils/build-wrapper-linux-x86/build-wrapper-linux-x86-64
+Environment=CICD_SONAR_MODE=ssh
+Environment=CICD_SONAR_SSH=agent@127.0.0.1
+Environment=CICD_SONAR_RUNNER=/home/agent/cicd-host/sonar_runner.sh
+Environment=CICD_WALL_ENABLED=false
+Environment=GIT_SSL_CAINFO=/etc/ssl/certs/host-ca-bundle.pem
+Environment=CURL_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
+Environment=SSL_CERT_FILE=/etc/ssl/certs/host-ca-bundle.pem
+Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
+
+Volume=/home/agent/cicd/config:/home/agent/cicd/config
+Volume=/home/agent/cicd/db:/home/agent/cicd/db
+Volume=/home/agent/cicd/logs:/home/agent/cicd/logs
+Volume=/home/agent/GALTTCMC:/home/agent/GALTTCMC
+Volume=/home/agent/V08.XX.XX.XX:/home/agent/V08.XX.XX.XX
+Volume=/home/agent/.ssh:/home/agent/.ssh:ro
+Volume=/etc/profile.d/informacion.sh:/etc/profile.d/informacion.sh
+Volume=/etc/ssl/ca-bundle.pem:/etc/ssl/certs/host-ca-bundle.pem:ro
+
+Exec=daemon
+
+[Service]
+Restart=always
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

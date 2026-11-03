@@ -20,7 +20,7 @@
 
 ## 3. Dependencias CDN ✅ Resuelto
 
-~~Tailwind, Alpine.js y Chart.js se cargan desde internet (`cdn.tailwindcss.com`). En una red local aislada (`172.30.188.x`) esto es un punto de fallo.~~
+~~Tailwind, Alpine.js y Chart.js se cargan desde internet (`cdn.tailwindcss.com`). En una red local aislada (`192.0.2.x`) esto es un punto de fallo.~~
 
 Descargadas a `web/static/js/` y `base.html` actualizado con rutas locales.
 

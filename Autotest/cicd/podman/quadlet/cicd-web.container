@@ -1,0 +1,44 @@
+# =============================================================================
+# Quadlet: Web UI CI/CD GALTTCMC
+# Instalar en ~/.config/containers/systemd/cicd-web.container
+# =============================================================================
+# Usa la misma BD/config/logs del host que el orquestador. El .env debe existir
+# (SECRET_KEY y credenciales).
+# =============================================================================
+
+[Unit]
+Description=GALTTCMC CI/CD Web UI (Podman)
+After=cicd.service
+
+[Container]
+Image=localhost/cicd-web:local
+ContainerName=cicd-web
+Network=host
+UserNS=keep-id
+
+Environment=HOME=/home/agent
+Environment=CICD_HOME=/home/agent/cicd
+Environment=WEB_PORT=8080
+EnvironmentFile=/home/agent/cicd/config/.env
+Environment=GIT_SSL_CAINFO=/etc/ssl/certs/host-ca-bundle.pem
+Environment=CURL_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
+Environment=SSL_CERT_FILE=/etc/ssl/certs/host-ca-bundle.pem
+Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
+
+Volume=/home/agent/cicd/config:/home/agent/cicd/config
+Volume=/home/agent/cicd/db:/home/agent/cicd/db
+Volume=/home/agent/cicd/logs:/home/agent/cicd/logs
+Volume=/home/agent/GALTTCMC:/home/agent/GALTTCMC
+Volume=/home/agent/V08.XX.XX.XX:/home/agent/V08.XX.XX.XX
+Volume=/home/agent/.ssh:/home/agent/.ssh:ro
+Volume=/etc/profile.d/informacion.sh:/etc/profile.d/informacion.sh
+Volume=/etc/ssl/ca-bundle.pem:/etc/ssl/certs/host-ca-bundle.pem:ro
+
+Exec=--bind 0.0.0.0:8080 --workers 2 --threads 2 --timeout 120 --access-logfile /home/agent/cicd/logs/web_access.log --error-logfile /home/agent/cicd/logs/web_error.log --log-level info app:app
+
+[Service]
+Restart=always
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
