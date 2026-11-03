@@ -23,9 +23,9 @@ Release:        1%{?dist}
 License:        Proprietary - Indra
 Group:          Development/Tools
 BuildArch:      noarch
-URL:            https://git.indra.es/git/GALTTCMC/GALTTCMC
+URL:            https://git.example.com/git/GALTTCMC/GALTTCMC
 Vendor:         Indra Sistemas
-Packager:       GALTTCMC Team <galttcmc@indra.es>
+Packager:       GALTTCMC Team <galttcmc@example.com>
 
 # Dependencias del sistema
 Requires:       bash >= 4.0
@@ -146,7 +146,7 @@ VCENTER_PASSWORD=password_vcenter
 # Target VM SSH key (ruta absoluta)
 TARGET_VM_KEY=/home/agent/.ssh/id_rsa
 TARGET_VM_USER=root
-TARGET_VM_HOST=172.30.188.147
+TARGET_VM_HOST=192.0.2.147
 EOF
 
 %files
@@ -230,7 +230,7 @@ if [ ! -f /home/%{_app_user}/.ssh/id_rsa ]; then
     echo "Generando claves SSH para usuario %{_app_user}..."
     su - %{_app_user} -c "ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' -C 'cicd-pipeline@%{_app_user}'" 2>/dev/null || true
     echo "Clave pública generada en: /home/%{_app_user}/.ssh/id_rsa.pub"
-    echo "Recuerda copiarla a las VMs objetivo con: ssh-copy-id root@172.30.188.147"
+    echo "Recuerda copiarla a las VMs objetivo con: ssh-copy-id root@192.0.2.147"
 fi
 
 # Fichero de /etc/profile.d que actualiza notify.sh (el servicio no puede usar sudo)
@@ -249,7 +249,7 @@ echo "     $ nano %{_app_dir}/config/.env"
 echo ""
 echo "  2. Copiar clave SSH pública a VM objetivo:"
 echo "     $ cat /home/%{_app_user}/.ssh/id_rsa.pub"
-echo "     $ ssh-copy-id root@172.30.188.147"
+echo "     $ ssh-copy-id root@192.0.2.147"
 echo ""
 echo "  3. Verificar instalación de yq (parser YAML para bash):"
 echo "     $ command -v yq || echo 'Instalar yq manualmente desde https://github.com/mikefarah/yq'"
@@ -288,7 +288,7 @@ fi
 rm -rf %{buildroot}
 
 %changelog
-* Mon Feb 19 2026 GALTTCMC Team <galttcmc@indra.es> - 1.0.0-1
+* Mon Feb 19 2026 GALTTCMC Team <galttcmc@example.com> - 1.0.0-1
 - Versión inicial del RPM
 - Pipeline completo con monitorización Git, compilación, SonarQube y despliegue
 - Incluye dependencias Python offline (wheels)

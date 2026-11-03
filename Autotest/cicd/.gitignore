@@ -48,3 +48,6 @@ Thumbs.db
 
 # Artefactos del PoC Podman (imagenes exportadas)
 podman/dist/
+
+# Artefactos RPM generados (no commitear)
+*.rpm

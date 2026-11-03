@@ -55,7 +55,7 @@ gunicorn --bind 0.0.0.0:8080 --workers 2 app:app
 Después de la instalación, accede a la Web UI en:
 
 ```
-http://172.30.188.137:8080
+http://192.0.2.137:8080
 ```
 
 O desde cualquier navegador en la red:
