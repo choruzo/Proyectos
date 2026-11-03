@@ -34,6 +34,10 @@ en local y se exportan como `.tar` para cargarlas en la máquina destino.
 Las dependencias Python del orquestador (`requests`, `PyYAML` y `pexpect` para
 la fase 6 `post_install`) van dentro de la imagen; no se instalan en el host.
 
+La Web UI monta el socket rootless de Podman (`%t/podman/podman.sock` en la
+unidad Quadlet) para mostrar el estado real del contenedor `cicd`. Requiere
+`systemctl --user enable --now podman.socket`.
+
 ## Ficheros
 
 ```

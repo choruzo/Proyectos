@@ -1093,9 +1093,60 @@ def api_sonar_trends():
         return api_error('api_sonar_trends')
 
 
+def _podman_socket_path():
+    """Ruta del socket de Podman (contenedor o modo host)."""
+    configured = os.environ.get('PODMAN_SOCKET', '').strip()
+    if configured and os.path.exists(configured):
+        return configured
+    xdg = os.environ.get('XDG_RUNTIME_DIR', '').strip()
+    candidates = []
+    if xdg:
+        candidates.append(os.path.join(xdg, 'podman', 'podman.sock'))
+    candidates.append('/run/podman/podman.sock')
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return ''
+
+
+def _podman_container_status(container):
+    """Estado del contenedor vía API compatible de Podman (socket Unix)."""
+    socket_path = _podman_socket_path()
+    if not socket_path:
+        return None
+    try:
+        result = subprocess.run(
+            ['curl', '-s', '--unix-socket', socket_path,
+             'http://d/v1.40/containers/{}/json'.format(container)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        data = json.loads(result.stdout.decode('utf-8', errors='replace'))
+        state = data.get('State') or {}
+        running = bool(state.get('Running'))
+        status = str(state.get('Status') or '').lower()
+        exit_code = state.get('ExitCode')
+        if running:
+            return {'status': 'active', 'running': True}
+        if status in ('exited', 'stopped', 'dead') and exit_code not in (None, 0):
+            return {'status': 'failed', 'running': False}
+        return {'status': 'inactive', 'running': False}
+    except Exception:
+        app.logger.exception('Error consultando el estado del contenedor en Podman')
+        return None
+
+
 @app.route('/api/pipeline/status')
 def api_pipeline_status():
-    """Estado real del servicio cicd.service via systemctl"""
+    """Estado del daemon: contenedor Podman o servicio systemd (modo host)."""
+    podman = _podman_container_status(
+        os.environ.get('CICD_CONTAINER_NAME', 'cicd'))
+    if podman is not None:
+        return jsonify(podman)
+
     try:
         result = subprocess.run(
             ['systemctl', 'is-active', 'cicd'],

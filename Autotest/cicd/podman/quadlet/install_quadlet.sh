@@ -52,6 +52,9 @@ install_units() {
     install -m 0644 "$HERE/cicd-web.container" "$DEST/cicd-web.container"
 
     systemctl --user daemon-reload
+    # La Web consulta el estado real del contenedor por el socket de Podman.
+    echo "==> Habilitando podman.socket (estado del daemon en la Web)"
+    systemctl --user enable --now podman.socket 2>/dev/null || true
     echo "==> Arrancando servicios"
     # Las unidades de Quadlet son generadas: no se pueden 'enable'. El
     # autoarranque lo aporta [Install] WantedBy=default.target (el generador

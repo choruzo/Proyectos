@@ -99,6 +99,15 @@ if [[ -f "${CICD_DIR}/config/.env" ]]; then
     WEB_ENV_ARGS+=(--env-file "${CICD_DIR}/config/.env")
 fi
 
+# Socket de Podman para que la Web muestre el estado real del contenedor cicd.
+# Si no existe (modo host), la Web usa systemctl como fallback.
+WEB_VOL_ARGS=()
+PODMAN_SOCKET_HOST="${PODMAN_SOCKET_HOST:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
+if [[ -S "$PODMAN_SOCKET_HOST" ]]; then
+    WEB_VOL_ARGS+=(-v "${PODMAN_SOCKET_HOST}:/run/podman/podman.sock:ro")
+    WEB_ENV_ARGS+=(-e "PODMAN_SOCKET=/run/podman/podman.sock")
+fi
+
 ensure_dirs() {
     mkdir -p "$CICD_DIR/db" "$CICD_DIR/logs"
     [[ -d "$REPO_DIR" ]] || echo "AVISO: no existe $REPO_DIR (git.repo_local_path)" >&2
@@ -123,7 +132,7 @@ start_web() {
 
     echo "==> Arrancando Web UI en :${WEB_PORT}"
     "$PODMAN" run -d --name cicd-web --restart always --stop-timeout 30 \
-        "${COMMON_ARGS[@]}" "${VOL_ARGS[@]}" "${WEB_ENV_ARGS[@]}" \
+        "${COMMON_ARGS[@]}" "${VOL_ARGS[@]}" "${WEB_VOL_ARGS[@]}" "${WEB_ENV_ARGS[@]}" \
         -e "WEB_PORT=${WEB_PORT}" \
         "$IMAGE_WEB" \
         --bind "0.0.0.0:${WEB_PORT}" --workers 2 --threads 2 --timeout 120 \

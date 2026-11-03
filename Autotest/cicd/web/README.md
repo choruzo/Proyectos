@@ -160,6 +160,9 @@ La Web UI expone los siguientes endpoints REST:
 - `GET /api/sonar/results` - Resultados de análisis SonarQube
 - `GET /api/sonar/trends` - Tendencias de métricas (últimos 10 deployments)
 
+### Servicio
+- `GET /api/pipeline/status` - Estado del contenedor `cicd` (API Podman) o del servicio systemd en modo host
+
 ## ⚙️ Configuración
 
 ### Variables de Entorno

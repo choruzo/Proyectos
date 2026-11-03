@@ -49,6 +49,7 @@ services:
       CICD_HOME: /home/agent/cicd
       WEB_HOST: 0.0.0.0
       WEB_PORT: "8080"
+      PODMAN_SOCKET: /run/podman/podman.sock
     # Descomenta si quieres que la Web reciba SECRET_KEY y credenciales:
     # env_file:
     #   - ../config/.env
@@ -56,3 +57,4 @@ services:
       - /home/agent/cicd/config:/home/agent/cicd/config
       - /home/agent/cicd/db:/home/agent/cicd/db
       - /home/agent/cicd/logs:/home/agent/cicd/logs
+      - ${XDG_RUNTIME_DIR:-/run/user/1013}/podman/podman.sock:/run/podman/podman.sock:ro

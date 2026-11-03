@@ -24,6 +24,8 @@ Environment=GIT_SSL_CAINFO=/etc/ssl/certs/host-ca-bundle.pem
 Environment=CURL_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
 Environment=SSL_CERT_FILE=/etc/ssl/certs/host-ca-bundle.pem
 Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/host-ca-bundle.pem
+# Socket de Podman para consultar el estado real del contenedor "cicd"
+Environment=PODMAN_SOCKET=/run/podman/podman.sock
 
 Volume=/home/agent/cicd/config:/home/agent/cicd/config
 Volume=/home/agent/cicd/db:/home/agent/cicd/db
@@ -33,6 +35,7 @@ Volume=/home/agent/V08.XX.XX.XX:/home/agent/V08.XX.XX.XX
 Volume=/home/agent/.ssh:/home/agent/.ssh:ro
 Volume=/etc/profile.d/informacion.sh:/etc/profile.d/informacion.sh
 Volume=/etc/ssl/ca-bundle.pem:/etc/ssl/certs/host-ca-bundle.pem:ro
+Volume=%t/podman/podman.sock:/run/podman/podman.sock:ro
 
 Exec=--bind 0.0.0.0:8080 --workers 2 --threads 2 --timeout 120 --access-logfile /home/agent/cicd/logs/web_access.log --error-logfile /home/agent/cicd/logs/web_error.log --log-level info app:app
 
